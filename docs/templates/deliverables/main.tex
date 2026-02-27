@@ -1,0 +1,44 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{fontspec}
+\usepackage[english, bidi=basic, provide=*]{babel}
+\babelprovide[import, onchar=ids fonts]{english}
+\babelfont{rm}{Noto Sans}
+\usepackage{enumitem}
+\setlist[itemize]{label=-}
+\usepackage{booktabs}   % For professional tables
+\usepackage{fancyhdr}   % For headers and footers
+\usepackage{graphicx}   % For images
+\usepackage{hyperref}   % For links
+\pagestyle{fancy}
+\fancyhf{}
+\setlength{\headheight}{24pt} 
+\lhead{\small Systems Engineering \\ Master in Electrical and Computer Engineering}
+\rhead{\small 2nd Semester, 2026}
+\lfoot{\small \textbf{U. PORTO} | \textbf{FEUP}}
+\cfoot{\thepage}
+\rfoot{\small \textbf{SWAID - PR}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% IMPORTANT: mudar compiler para XeLatex se não estiver a ser usado senao pode dar erros.                                               %
+% NOTE: usar \input para meter tudo seguido e usar \include se quisermos que comece na proxima pagina (ver sections 3 e 4 como exemplo) %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document} 
+
+% --- TITLE PAGE ---
+\include{cover}
+% --- Index ---
+\tableofcontents
+% --- CHAPTER 1 ---
+\include{section_01}
+% --- CHAPTER 2 ---
+\include{section_02.tex}
+% --- CHAPTER 3 ---
+\input{section_03.tex}
+% --- CHAPTER 4 ---
+\input{section_04.tex}
+% --- OTHER CHAPTERS (EX: 5) ---
+\include{section_05.tex}
+
+\end{document}
