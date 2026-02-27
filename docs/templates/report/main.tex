@@ -1,0 +1,80 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{fontspec}
+\usepackage[english, bidi=basic, provide=*]{babel}
+\babelprovide[import, onchar=ids fonts]{english}
+\babelfont{rm}{Noto Sans}
+\usepackage{enumitem}
+\setlist[itemize]{label=-}
+\usepackage{booktabs}   % For professional tables
+\usepackage{fancyhdr}   % For headers and footers
+\usepackage{graphicx}   % For image handling
+\usepackage{hyperref}   % For links and TOC
+\usepackage{tabularx}   % For flexible tables
+\usepackage{lastpage}   % To track total page count (Page X of Total)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Use the compiler XeLatex for it to work                                                 %
+% If you want there to be no change of page between 2 sections, change \include by \input %      
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% --- HEADER AND FOOTER SETUP ---
+\pagestyle{fancy}
+\fancyhf{}
+\setlength{\headheight}{24pt}
+\lhead{\small Systems Engineering \\ Master in Electrical and Computer Engineering}
+\rhead{\small Final Project Report}
+\lfoot{\small \textbf{U. PORTO} | \textbf{FEUP}}
+\cfoot{\thepage\ of \pageref{LastPage}} % Tracking the 42-page limit
+\rfoot{\small \textbf{SWAID - PR}}
+
+\begin{document}
+
+% --- TITLE PAGE ---
+\include{cover.tex}
+\newpage
+\tableofcontents
+\newpage
+% --- 1. CHALLENGE ---
+\include{section_01.tex}
+% --- 2. MARKET SURVEY ---
+\include{section_02.tex}
+% --- 3. SYSTEM CONCEPT ---
+\include{section_03.tex}
+% --- 4. VALIDATED REQUIREMENTS ---
+\include{section_04.tex}
+% --- 5. VERIFIED FUNCTIONAL ARCHITECTURE ---
+\include{section_05.tex}
+% --- 6. SYSTEM BASELINE AND SBS ---
+\include{section_06.tex}
+% --- 7. MOES AND MOPS ---
+\include{section_07.tex}
+% --- 8. SYSTEM DESIGN ---
+\include{section_08.tex}
+% --- 9. MAPPING FUNCTIONAL TO DESIGN ARCHITECTURE ---
+\include{section_09.tex}
+% --- 10. DESIGN RATIONALE ---
+\include{section_10}
+% --- 11. OUTCOME OF THE PROJECT ---
+\include{section_11.tex}
+% --- 12. TESTS, VALIDATION AND VERIFICATION ---
+\include{section_12.tex}
+% --- 13. COST STRUCTURE ---
+\include{section_13.tex}
+% --- 14. MANAGEMENT APPROACH ---
+\include{section_14.tex}
+% --- 15. TEAM ORGANIZATION ---
+\include{section_15.tex}
+% --- 16. WBS AND GANTT ---
+\include{section_16.tex}
+% --- 17. RISK MANAGEMENT ---
+\include{section_17.tex}
+% --- 18. OBSERVATIONS AND LESSONS LEARNED ---
+\include{section_18.tex}
+% --- 19. FINAL INTERNAL EVALUATION ---
+\include{section_19.tex}
+% --- 20. CONCLUSION ---
+\include{section_20.tex}
+
+\end{document}
