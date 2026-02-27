@@ -1,0 +1,12 @@
+# Ignores all results from compiling the LaTex presentation except the PDF
+# ----------------- #
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.nav
+*.out
+*.snm
+*.synctex.gz
+*.toc
+# ----------------- #
