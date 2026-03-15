@@ -84,12 +84,13 @@ class ChladniApp:
         outer.columnconfigure(1, weight=1)
         outer.rowconfigure(0, weight=1)
 
-        left_box = ttk.Frame(outer, width=360)
+        # Largura maior para o painel de controlo à esquerda
+        left_box = ttk.Frame(outer, width=470)
         left_box.grid(row=0, column=0, sticky="ns", padx=(0, 6))
         left_box.grid_propagate(False)
 
         self._scv = tk.Canvas(left_box, bg=Theme.BG, highlightthickness=0,
-                              width=340)
+                      width=450)
         sb = ttk.Scrollbar(left_box, orient="vertical",
                            command=self._scv.yview)
         self.ctrl = ttk.Frame(self._scv)
@@ -437,7 +438,7 @@ class ChladniApp:
         self.info_text.pack(fill=tk.X, padx=10, pady=4)
         self.info_text.config(state=tk.DISABLED)
         self.warn_lbl = ttk.Label(self.ctrl, style="Warn.TLabel",
-                                  wraplength=280)
+                                  wraplength=340)
         self.warn_lbl.pack(anchor=tk.W, padx=10, pady=(0, 14))
 
     # ── Geometry change ───────────────────────────────────────────────
