@@ -391,8 +391,27 @@ class ChladniApp:
         # ── Sweep ──
         self._sep()
         self._header("📊  Varrimento de Frequência")
+        
+        sm_f = ttk.Frame(self.ctrl)
+        sm_f.pack(fill=tk.X, padx=10, pady=(2, 0))
+        ttk.Label(sm_f, text="Modo:").pack(side=tk.LEFT, padx=(0, 5))
+        self.sweep_mode_var = tk.StringVar(value="Clássico (Passo)")
+        cb_mode = ttk.Combobox(sm_f, textvariable=self.sweep_mode_var,
+                               values=["Clássico (Passo)", "Ressonâncias (Automático)"],
+                               state="readonly", width=22)
+        cb_mode.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        sp_f = ttk.Frame(self.ctrl)
+        sp_f.pack(fill=tk.X, padx=10, pady=(4, 0))
+        ttk.Label(sp_f, text="Fases:").pack(side=tk.LEFT, padx=(0, 5))
+        self.sweep_phase_var = tk.StringVar(value="Fase Atual")
+        cb_phase = ttk.Combobox(sp_f, textvariable=self.sweep_phase_var,
+                               values=["Fase Atual", "Uniforme (0°)", "Múltiplas Fases (Auto)"],
+                               state="readonly", width=22)
+        cb_phase.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
         sw_f = ttk.Frame(self.ctrl)
-        sw_f.pack(fill=tk.X, padx=10, pady=2)
+        sw_f.pack(fill=tk.X, padx=10, pady=4)
         ttk.Label(sw_f, text="De:", font=("Segoe UI", 9)).pack(side=tk.LEFT)
         self.sweep_start_var = tk.DoubleVar(value=100)
         tk.Entry(sw_f, textvariable=self.sweep_start_var, width=6,
@@ -912,6 +931,8 @@ class ChladniApp:
             "freq_end": self.sweep_end_var.get(),
             "freq_step": self.sweep_step_var.get(),
             "material_name": self.material_var.get(),
+            "sweep_mode": self.sweep_mode_var.get(),
+            "sweep_phase": self.sweep_phase_var.get(),
         }
         SweepWindow(self.root, self.physics, params)
 

@@ -21,18 +21,78 @@ class SweepWindow:
         """
         params dict keys:
             Lx, Ly, D, rho, h, transducers, n_modes, damping, sign,
-            geometry, freq_start, freq_end, freq_step, material_name
+            geometry, freq_start, freq_end, freq_step, material_name,
+            sweep_mode, sweep_phase
         """
         self.physics = physics
         self.params = params
         self._running = False
         self._current_idx = 0
 
-        freqs = np.arange(params["freq_start"],
-                          params["freq_end"] + params["freq_step"] / 2,
-                          params["freq_step"])
-        self.freqs = freqs
-        self.n_total = len(freqs)
+        self.frames = []
+        mode = params.get("sweep_mode", "Clássico (Passo)")
+        phase_opt = params.get("sweep_phase", "Fase Atual")
+        
+        if mode == "Clássico (Passo)":
+            freqs = np.arange(params["freq_start"],
+                              params["freq_end"] + params["freq_step"] / 2,
+                              params["freq_step"])
+            for f in freqs:
+                self.frames.append((f, params["transducers"], ""))
+        else:
+            # Resonances (Automático)
+            freq_start = params["freq_start"]
+            freq_end = params["freq_end"]
+            geom = params["geometry"]
+            Lx, Ly = params["Lx"], params["Ly"]
+            D, rho, h = params["D"], params["rho"], params["h"]
+            nm, sign = params["n_modes"], params["sign"]
+
+            # Compute theoretical resonances
+            if geom == "Circular":
+                R = Lx / 2.0
+                self.physics._build_cache_circ(R, nm, D, rho, h)
+            else:
+                self.physics._build_cache_rect(Lx, Ly, sign, nm, D, rho, h)
+            
+            res_set = set()
+            for fnm in self.physics._f_nm:
+                if freq_start <= fnm <= freq_end:
+                    res_set.add(round(float(fnm), 1))
+            ordered_freqs = sorted(res_set)
+            
+            base_trans = params["transducers"]
+            n_t = len(base_trans)
+            
+            combinations = []
+            if phase_opt == "Fase Atual":
+                combinations.append(("Atual", base_trans))
+            elif phase_opt == "Uniforme (0°)":
+                combinations.append(("Uniforme", [(x, y, a, 0.0) for (x, y, a, p) in base_trans]))
+            else:
+                # "Múltiplas Fases (Auto)"
+                combinations.append(("Unif", [(x, y, a, 0.0) for (x, y, a, p) in base_trans]))
+                if n_t >= 4:
+                    # Distintos: 0, 90, 180, 270
+                    phases = [0.0, 90.0, 180.0, 270.0]
+                    c_dist = [(base_trans[i][0], base_trans[i][1], base_trans[i][2], phases[i % 4]) for i in range(n_t)]
+                    combinations.append(("Distintos", c_dist))
+                    
+                    # Pares Adjacentes: 0, 0, 180, 180
+                    phases_adj = [0.0, 0.0, 180.0, 180.0]
+                    c_adj = [(base_trans[i][0], base_trans[i][1], base_trans[i][2], phases_adj[i % 4]) for i in range(n_t)]
+                    combinations.append(("Pares_Adj", c_adj))
+                    
+                    # Pares Diagonais: 0, 180, 180, 0
+                    phases_diag = [0.0, 180.0, 180.0, 0.0]
+                    c_diag = [(base_trans[i][0], base_trans[i][1], base_trans[i][2], phases_diag[i % 4]) for i in range(n_t)]
+                    combinations.append(("Pares_Diag", c_diag))
+            
+            for f in ordered_freqs:
+                for name, t_conf in combinations:
+                    self.frames.append((f, t_conf, name))
+                    
+        self.n_total = len(self.frames)
 
         self.win = tk.Toplevel(parent)
         self.win.title("Varrimento de Frequência")
@@ -176,12 +236,12 @@ class SweepWindow:
                                     parent=self.win)
             return
 
-        freq = self.freqs[self._current_idx]
+        freq, current_trans, phase_label = self.frames[self._current_idx]
         p = self.params
 
         sand, Z_3d = self.physics.sand_and_3d(
             freq, p["Lx"], p["Ly"], p["D"], p["rho"], p["h"],
-            p["transducers"], n_modes=p["n_modes"],
+            current_trans, n_modes=p["n_modes"],
             damping=p["damping"], sign=p["sign"],
             geometry=p["geometry"])
 
@@ -211,7 +271,11 @@ class SweepWindow:
                     [-Ly/2, -Ly/2, Ly/2, Ly/2, -Ly/2],
                     color="#555", lw=1.5)
 
-        ax.set_title(f"{freq:.0f} Hz", color=Theme.FG, fontsize=14,
+        title_text = f"{freq:.0f} Hz"
+        if phase_label:
+            title_text += f" ({phase_label})"
+
+        ax.set_title(title_text, color=Theme.FG, fontsize=14,
                      fontweight="bold")
         ax.set_facecolor(Theme.PL_BG)
         ax.tick_params(colors=Theme.FG_DIM, labelsize=7)
@@ -248,8 +312,9 @@ class SweepWindow:
         # Save if requested
         if self.save_var.get() and self.dir_var.get():
             save_dir = self.dir_var.get()
+            suffix = f"_{phase_label}" if phase_label else ""
             fname = os.path.join(save_dir,
-                                 f"chladni_{freq:07.1f}Hz.png")
+                                 f"chladni_{freq:07.1f}Hz{suffix}.png")
             self.fig.savefig(fname, dpi=150, facecolor=Theme.PL_BG)
 
         # Update progress
@@ -257,7 +322,7 @@ class SweepWindow:
         self.progress["value"] = self._current_idx
         self.status_label.config(
             text=f"{self._current_idx} / {self.n_total}")
-        self.freq_label.config(text=f"{freq:.0f} Hz")
+        self.freq_label.config(text=title_text)
 
         # Schedule next step
         self.win.after(self.speed_var.get(), self._step)
