@@ -1,6 +1,6 @@
-"""
-Janela de varrimento de frequência (Frequency Sweep Simulation).
-Gera imagens do padrão de Chladni para cada frequência num intervalo definido.
+"""Frequency sweep simulation window.
+
+Generates one Chladni pattern image per frequency in a chosen range.
 """
 
 import os

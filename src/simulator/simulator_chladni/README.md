@@ -29,35 +29,45 @@ Built on Kirchhoff thin-plate theory with modal superposition, supporting arbitr
 ## Requirements
 
 - Python ≥ 3.9
-- `numpy`, `scipy`, `matplotlib` (see [requirements.txt](../../../requirements.txt))
+- `numpy`, `scipy`, `matplotlib` (see [requirements.txt](requirements.txt))
 - A display / Tk backend (standard on Windows and most Linux desktops)
 
 ---
 
 ## How to run
 
-All commands are run from the **repository root** (`swaid-plate-resonance/`).
+All commands below are run from this folder: `src/simulator/simulator_chladni/`.
+
+### Fastest way (one command)
+
+```bash
+bash run_chladni.sh
+```
+
+This launcher script will:
+- create `.venv` automatically (if missing)
+- install dependencies from `requirements.txt` (if missing)
+- start the simulator
+
+To only validate the environment without launching the UI:
+
+```bash
+bash run_chladni.sh --check
+```
 
 ### 1 — Install dependencies
 
 ```bash
-# Create and activate a virtual environment (recommended)
 python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# Linux / macOS
 source .venv/bin/activate
-
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ### 2 — Launch the simulator
 
 ```bash
-# From the repository root
-cd src
+# From this folder
+cd ../../..
 python -m simulator.simulator_chladni
 ```
 

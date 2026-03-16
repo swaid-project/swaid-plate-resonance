@@ -1,31 +1,73 @@
-"""
-Constantes, materiais e colormaps para o simulador Chladni.
-"""
+"""Constants, materials, and colormaps for the Chladni simulator."""
 
+from dataclasses import dataclass
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 
-# ── Materiais ─────────────────────────────────────────────────────────────
-MATERIALS = {
-    "Alumínio": {"E": 69e9,  "rho": 2700, "nu": 0.33},
-    "Aço":      {"E": 200e9, "rho": 7800, "nu": 0.30},
-    "Latão":    {"E": 100e9, "rho": 8500, "nu": 0.34},
-    "Vidro":    {"E": 70e9,  "rho": 2500, "nu": 0.24},
-    "Cobre":    {"E": 117e9, "rho": 8960, "nu": 0.34},
-    "Titânio":  {"E": 116e9, "rho": 4507, "nu": 0.32},
+@dataclass(frozen=True)
+class MaterialSpec:
+    """Material preset for real metal sheets available on market."""
+    name: str
+    E: float
+    rho: float
+    nu: float
+    sizes_mm: tuple
+    thicknesses_mm: tuple
+
+
+@dataclass(frozen=True)
+class VibrationSpeaker:
+    """Physical constraints for a real vibration speaker transducer."""
+    f_min: float = 20.0
+    f_max: float = 20000.0
+    nominal_power_w: float = 25.0
+    diameter_m: float = 0.05
+    mass_kg: float = 0.268
+
+
+# ── Real materials ────────────────────────────────────────────────────────
+MATERIAL_CATALOG = {
+    "Aço Inoxidável 304 (Mirror 8K)": MaterialSpec(
+        name="Aço Inoxidável 304 (Mirror 8K)",
+        E=193e9,
+        rho=8000.0,
+        nu=0.29,
+        sizes_mm=((100, 100), (100, 200), (200, 200),
+                  (200, 300), (300, 300), (300, 400)),
+        thicknesses_mm=(0.5, 0.8, 1.0, 1.5, 2.0),
+    ),
+    "Alumínio (High Reflective Mirror)": MaterialSpec(
+        name="Alumínio (High Reflective Mirror)",
+        E=69e9,
+        rho=2700.0,
+        nu=0.33,
+        sizes_mm=((200, 200), (300, 300)),
+        thicknesses_mm=(0.3, 0.4, 0.5, 0.8, 1.0),
+    ),
 }
 
-# ── Geometrias suportadas ─────────────────────────────────────────────────
+# Legacy-friendly mapping consumed by GUI code (E/rho/nu fields).
+MATERIALS = {
+    name: {"E": spec.E, "rho": spec.rho, "nu": spec.nu,
+           "sizes_mm": spec.sizes_mm,
+           "thicknesses_mm": spec.thicknesses_mm}
+    for name, spec in MATERIAL_CATALOG.items()
+}
+
+DEFAULT_MATERIAL = "Alumínio (High Reflective Mirror)"
+DEFAULT_VIBRATION_SPEAKER = VibrationSpeaker()
+
+# ── Supported geometries ──────────────────────────────────────────────────
 GEOMETRIES = ["Quadrada", "Rectangular", "Circular"]
 
-# ── Colormap areia ────────────────────────────────────────────────────────
+# ── Sand colormap ─────────────────────────────────────────────────────────
 SAND_CMAP = LinearSegmentedColormap.from_list("sand", [
     "#080808", "#12100a", "#2a2010", "#503c1a",
     "#806830", "#b09050", "#d4b870", "#e8d8a8",
     "#f5ecd0", "#fffbf0",
 ], N=256)
 
-# ── Cores do tema ─────────────────────────────────────────────────────────
+# ── Theme colors ──────────────────────────────────────────────────────────
 class Theme:
     BG     = "#1e1e2e"
     BG2    = "#282840"
@@ -38,7 +80,7 @@ class Theme:
     YELLOW = "#f9e2af"
     PL_BG  = "#111118"
 
-# ── Zeros de J_n(x) para placa circular (Bessel) ─────────────────────────
+# ── J_n(x) zeros for circular plate (Bessel) ─────────────────────────────
 # Pre-computed zeros of derivative of Bessel functions J'_n(x) = 0
 # for free-edge circular plate: λ_nm values
 # For clamped circular plate we use zeros of J_n(x)

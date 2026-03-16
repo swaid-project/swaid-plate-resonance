@@ -1,13 +1,12 @@
-"""
-Simulador de Figuras de Chladni  (v3 — modular)
-=================================================
-Este ficheiro mantém-se como ponto de entrada retrocompatível.
-O código foi refactored para o package simulator:
-  - constants.py  — materiais, colormaps, cores
-  - physics.py    — motor de física (quadrada, rectangular, circular)
-  - gui.py        — interface gráfica
-  - sweep.py      — varrimento de frequência
-  - __main__.py   — entry point (python -m simulator)
+"""Chladni Figure Simulator (v3 - modular).
+
+This file remains as a backward-compatible entry point.
+The codebase was refactored into the simulator package:
+  - constants.py  - materials, colormaps, theme colors
+  - physics.py    - physics engine (square, rectangular, circular)
+  - gui.py        - graphical user interface
+  - sweep.py      - frequency sweep window
+  - __main__.py   - entry point (python -m simulator)
 """
 
 import tkinter as tk

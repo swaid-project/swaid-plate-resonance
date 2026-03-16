@@ -1,6 +1,4 @@
-"""
-Interface gráfica (GUI) para o simulador de figuras de Chladni.
-"""
+"""Graphical user interface (GUI) for the Chladni figure simulator."""
 
 import numpy as np
 from scipy.signal import find_peaks
@@ -84,7 +82,7 @@ class ChladniApp:
         outer.columnconfigure(1, weight=1)
         outer.rowconfigure(0, weight=1)
 
-        # Largura maior para o painel de controlo à esquerda
+        # Wider left control panel
         left_box = ttk.Frame(outer, width=470)
         left_box.grid(row=0, column=0, sticky="ns", padx=(0, 6))
         left_box.grid_propagate(False)
@@ -146,12 +144,12 @@ class ChladniApp:
         # ── Material ──
         self._sep()
         self._header("⚙  Material do Prato")
-        self.material_var = tk.StringVar(value="Alumínio")
+        self.material_var = tk.StringVar(value="Alumínio (High Reflective Mirror)")
         cb = ttk.Combobox(self.ctrl, textvariable=self.material_var,
                           values=list(MATERIALS.keys()), state="readonly",
                           width=22)
         cb.pack(fill=tk.X, padx=10, pady=2)
-        cb.bind("<<ComboboxSelected>>", lambda e: self.full_update())
+        cb.bind("<<ComboboxSelected>>", self._on_material_change)
         self.mat_info = ttk.Label(self.ctrl, style="Small.TLabel")
         self.mat_info.pack(anchor=tk.W, padx=10)
 
@@ -167,34 +165,38 @@ class ChladniApp:
                             ).pack(side=tk.LEFT, padx=4)
 
         self.Lx_var = tk.DoubleVar(value=0.30)
-        ttk.Label(self.ctrl, text="Lado / Diâmetro Lx (m):"
+        self.Ly_var = tk.DoubleVar(value=0.30)
+
+        ttk.Label(self.ctrl, text="Tamanho da chapa (mm):"
                   ).pack(anchor=tk.W, padx=10, pady=(4, 0))
-        self._mk_scale(0.05, 1.0, 0.01, self.Lx_var, self.full_update)
+        self.size_var = tk.StringVar()
+        self.size_cb = ttk.Combobox(
+            self.ctrl, textvariable=self.size_var,
+            values=[], state="readonly", width=22)
+        self.size_cb.pack(fill=tk.X, padx=10, pady=2)
+        self.size_cb.bind("<<ComboboxSelected>>", self._on_size_change)
+
         self.Lx_lbl = ttk.Label(self.ctrl, style="Val.TLabel")
         self.Lx_lbl.pack(anchor=tk.W, padx=10)
 
-        self.Ly_var = tk.DoubleVar(value=0.30)
         self.Ly_label_widget = ttk.Label(self.ctrl, text="Lado Ly (m):")
         self.Ly_label_widget.pack(anchor=tk.W, padx=10, pady=(4, 0))
-        self.Ly_scale_frame = ttk.Frame(self.ctrl)
-        self.Ly_scale_frame.pack(fill=tk.X, padx=10)
-        self.Ly_scale = tk.Scale(
-            self.Ly_scale_frame, from_=0.05, to=1.0, resolution=0.01,
-            orient=tk.HORIZONTAL, variable=self.Ly_var,
-            command=lambda _: self.full_update(),
-            bg=Theme.BG, fg=Theme.FG, troughcolor=Theme.BG2,
-            highlightthickness=0, length=260,
-            sliderrelief="flat", activebackground=Theme.ACCENT)
-        self.Ly_scale.pack(fill=tk.X)
         self.Ly_lbl = ttk.Label(self.ctrl, style="Val.TLabel")
         self.Ly_lbl.pack(anchor=tk.W, padx=10)
 
         self.h_var = tk.DoubleVar(value=0.002)
-        ttk.Label(self.ctrl, text="Grossura h (m):"
+        ttk.Label(self.ctrl, text="Espessura da chapa (mm):"
                   ).pack(anchor=tk.W, padx=10, pady=(6, 0))
-        self._mk_scale(0.0005, 0.02, 0.0005, self.h_var, self.full_update)
+        self.h_mm_var = tk.StringVar()
+        self.h_cb = ttk.Combobox(
+            self.ctrl, textvariable=self.h_mm_var,
+            values=[], state="readonly", width=22)
+        self.h_cb.pack(fill=tk.X, padx=10, pady=2)
+        self.h_cb.bind("<<ComboboxSelected>>", self._on_thickness_change)
         self.h_lbl = ttk.Label(self.ctrl, style="Val.TLabel")
         self.h_lbl.pack(anchor=tk.W, padx=10)
+
+        self._refresh_material_options()
 
         # Initial Ly visibility
         self._update_ly_visibility()
@@ -443,21 +445,81 @@ class ChladniApp:
 
     # ── Geometry change ───────────────────────────────────────────────
     def _on_geometry_change(self):
+        self._refresh_material_options()
         self._update_ly_visibility()
         # Reset transducers to safe default
         self.transducers = [(0.0, 0.0, 1.0, 0.0)]
         self._refresh_trans()
         self.full_update()
 
+    def _on_material_change(self, _evt=None):
+        self._refresh_material_options()
+        self.full_update()
+
+    @staticmethod
+    def _format_size_mm(size_mm):
+        return f"{size_mm[0]}x{size_mm[1]} mm"
+
+    @staticmethod
+    def _parse_size_mm(size_txt):
+        clean = size_txt.lower().replace("mm", "").strip()
+        wx, wy = clean.split("x")
+        return int(wx.strip()), int(wy.strip())
+
+    def _refresh_material_options(self):
+        mat = MATERIALS[self.material_var.get()]
+        geom = self.geom_var.get()
+
+        all_sizes = list(mat.get("sizes_mm", []))
+        if geom in ("Quadrada", "Circular"):
+            sizes = [s for s in all_sizes if s[0] == s[1]]
+            if not sizes:
+                sizes = all_sizes
+        else:
+            sizes = all_sizes
+
+        size_opts = [self._format_size_mm(s) for s in sizes]
+        self.size_cb.configure(values=size_opts)
+
+        cur_size = self.size_var.get()
+        if cur_size not in size_opts and size_opts:
+            self.size_var.set(size_opts[0])
+
+        if self.size_var.get():
+            sx, sy = self._parse_size_mm(self.size_var.get())
+            self.Lx_var.set(sx / 1000.0)
+            self.Ly_var.set(sy / 1000.0)
+
+        thk_opts = [f"{v:.1f}" for v in mat.get("thicknesses_mm", [])]
+        self.h_cb.configure(values=thk_opts)
+        cur_h = self.h_mm_var.get()
+        if cur_h not in thk_opts and thk_opts:
+            self.h_mm_var.set(thk_opts[0])
+
+        if self.h_mm_var.get():
+            self.h_var.set(float(self.h_mm_var.get()) / 1000.0)
+
+    def _on_size_change(self, _evt=None):
+        if not self.size_var.get():
+            return
+        sx, sy = self._parse_size_mm(self.size_var.get())
+        self.Lx_var.set(sx / 1000.0)
+        self.Ly_var.set(sy / 1000.0)
+        self.full_update()
+
+    def _on_thickness_change(self, _evt=None):
+        if not self.h_mm_var.get():
+            return
+        self.h_var.set(float(self.h_mm_var.get()) / 1000.0)
+        self.full_update()
+
     def _update_ly_visibility(self):
         geom = self.geom_var.get()
         if geom == "Rectangular":
             self.Ly_label_widget.pack(anchor=tk.W, padx=10, pady=(4, 0))
-            self.Ly_scale_frame.pack(fill=tk.X, padx=10)
             self.Ly_lbl.pack(anchor=tk.W, padx=10)
         else:
             self.Ly_label_widget.pack_forget()
-            self.Ly_scale_frame.pack_forget()
             self.Ly_lbl.pack_forget()
 
     def _get_dims(self):
