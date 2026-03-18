@@ -4,6 +4,7 @@
 #include <atomic> // To avoid data races
 #include <string>
 #include <iomanip> // Used to format latency output
+#include <algorithm> // For std::find_if
 
 // --- Third-Party Libraries ---
 #include "imgui.h"
@@ -32,6 +33,32 @@ const char* CH_LABEL[NUM_GENERATORS] = {
     "Center ", "Subwoof",
     "Side  L", "Side  R",
 };
+
+// --- Audio Device Selection ---
+struct DeviceInfo {
+    int index;
+    std::string name;
+    double lowLatency;
+    int maxChannels;
+};
+
+// Function to list all available audio output devices
+static std::vector<DeviceInfo> listOutputDevices() {
+    std::vector<DeviceInfo> devices;
+    int numDevices = Pa_GetDeviceCount();
+    for (int i = 0; i < numDevices; i++) {
+        const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
+        if (info && info->maxOutputChannels >= NUM_CHANNELS) {
+            devices.push_back({
+                i,
+                info->name,
+                info->defaultLowOutputLatency,
+                info->maxOutputChannels
+            });
+        }
+    }
+    return devices;
+}
 
 // --- Data Structures ---
 struct Generator {
@@ -176,7 +203,7 @@ void runTUI() {
 }
 
 // --- Graphical User Interface (GUI) ---
-void runGUI() {
+void runGUI(int selectedDeviceIdx) {
     if (!glfwInit()) return;
     GLFWwindow* window = glfwCreateWindow(800, 600, "Multi-Channel Sine Generator", NULL, NULL);
     if (!window) return;
@@ -217,6 +244,13 @@ void runGUI() {
         if (ImGui::Checkbox("Headset Monitoring Mode", &hMode)) headsetMode.store(hMode);
         
         ImGui::Text("System Latency: %.2f ms", measuredLatency.load());
+        
+        // Display selected device
+        const PaDeviceInfo* devInfo = Pa_GetDeviceInfo(selectedDeviceIdx);
+        if (devInfo) {
+            ImGui::Text("Output Device: %s", devInfo->name);
+        }
+        
         ImGui::End();
 
         ImGui::Begin("Sine Wave Generators");
@@ -268,30 +302,57 @@ void runGUI() {
 
 int main() {
     Pa_Initialize();
-    PaStream *stream;
-    Pa_OpenDefaultStream(&stream, 0, NUM_CHANNELS, paFloat32, SAMPLE_RATE, FRAMES_PER_BUFFER, audioCallback, nullptr);
     
-    // --- Audio Device Selection ---
-    //int deviceIdx = selectAudioDevice();
-    //const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(deviceIdx);
-    //
-    //PaStreamParameters outputParams;
-    //outputParams.device                    = deviceIdx;
-    //outputParams.channelCount              = NUM_CHANNELS;
-    //outputParams.sampleFormat              = paFloat32;
-    //outputParams.suggestedLatency          = deviceInfo->defaultLowOutputLatency;
-    //outputParams.hostApiSpecificStreamInfo = nullptr;
-    //Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
+    // --- Use default audio device ---
+    auto devices = listOutputDevices();
+    
+    if (devices.empty()) {
+        std::cerr << "Error: No audio output device found with " << NUM_CHANNELS << "+ channels!\n";
+        Pa_Terminate();
+        return 1;
+    }
+    
+    // Look for device named "default"
+    int selectedIdx = 0;
+    for (size_t i = 0; i < devices.size(); i++) {
+        if (devices[i].name == "default") {
+            selectedIdx = i;
+            break;
+        }
+    }
+    
+    int deviceIdx = devices[selectedIdx].index;
+    std::cout << "\nUsing default device: " << devices[selectedIdx].name << "\n";
+    
+    // --- Open audio stream with selected device ---
+    PaStream *stream;
+    const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(deviceIdx);
+    
+    PaStreamParameters outputParams;
+    outputParams.device                    = deviceIdx;
+    outputParams.channelCount              = NUM_CHANNELS;
+    outputParams.sampleFormat              = paFloat32;
+    outputParams.suggestedLatency          = deviceInfo->defaultLowOutputLatency;
+    outputParams.hostApiSpecificStreamInfo = nullptr;
+    
+    PaError err = Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
+    
+    if (err != paNoError) {
+        std::cerr << "Error opening audio stream: " << Pa_GetErrorText(err) << "\n";
+        Pa_Terminate();
+        return 1;
+    }
 
     Pa_StartStream(stream);
 
     std::cout << "Select Mode:\n[1] GUI\n[2] TUI\nChoice: ";
     int choice; std::cin >> choice;
 
-    if (choice == 1) runGUI();
+    if (choice == 1) runGUI(deviceIdx);
     else runTUI();
 
     Pa_StopStream(stream);
+    Pa_CloseStream(stream);
     Pa_Terminate();
     return 0;
 }
