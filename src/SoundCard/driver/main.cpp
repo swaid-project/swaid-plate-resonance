@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <atomic> 
+#include <atomic> // To avoid data races
 #include <string>
 #include <iomanip> // Used to format latency output
 
@@ -17,35 +17,45 @@ const double PI = 3.14159265358979323846;
 const int SAMPLE_RATE = 48000; // Obviusly this can be changed
 const int FRAMES_PER_BUFFER = 256;
 const int NUM_CHANNELS = 8; // Assuming a 7.1 soundcard
+const int NUM_GENERATORS = 8; // One independent generator per physical output channel
+
+// --- 7.1 Channel Layout (standard ALSA/WASAPI order) ---
+// Each generator maps 1:1 to one physical hardware output channel.
+// ch 0: Front L    ch 1: Front R
+// ch 2: Rear  L    ch 3: Rear  R
+// ch 4: Center     ch 5: Subwoofer (LFE)
+// ch 6: Side  L    ch 7: Side  R
+
+const char* CH_LABEL[NUM_GENERATORS] = {
+    "Front L", "Front R",
+    "Rear  L", "Rear  R",
+    "Center ", "Subwoof",
+    "Side  L", "Side  R",
+};
 
 // --- Data Structures ---
 struct Generator {
-    std::atomic<float> freq{440.0f}; 
-    std::atomic<float> ampL{0.0f};
-    std::atomic<float> ampR{0.0f};
-    std::atomic<float> phaseDegL{0.0f};
-    std::atomic<float> phaseDegR{0.0f};
+    std::atomic<float> freq{440.0f};
+    std::atomic<float> amp{0.0f};
+    std::atomic<float> phaseDeg{0.0f};
 
     // Internal state (Audio thread only)
     double currentBasePhase = 0.0;
 };
 
 // Global state
-std::vector<Generator> generators(5); // Corresponding to each output
+std::vector<Generator> generators(NUM_GENERATORS); // One per physical output channel
 std::atomic<double> measuredLatency{0.0}; // To measure latency
-std::atomic<bool> headsetMode{true}; // true: Stereo Mix, false: Independent HW Mapping
+std::atomic<bool> headsetMode{true}; // true: fold all channels into Front L/R for monitoring, false: Independent HW Mapping
 std::atomic<bool> masterMute{false}; // Safety kill switch
-
 bool guiRunning = false;
 
 // Helper function to reset all generators
 void resetGenerators() {
     for (auto& gen : generators) {
         gen.freq.store(440.0f);
-        gen.ampL.store(0.0f);
-        gen.ampR.store(0.0f);
-        gen.phaseDegL.store(0.0f);
-        gen.phaseDegR.store(0.0f);
+        gen.amp.store(0.0f);
+        gen.phaseDeg.store(0.0f);
         gen.currentBasePhase = 0.0; // Reset internal phase to prevent clicks
     }
 }
@@ -58,50 +68,46 @@ static int audioCallback(const void *inputBuffer, void *outputBuffer,
                          void *userData) {
 
     measuredLatency.store((timeInfo->outputBufferDacTime - timeInfo->currentTime) * 1000.0); // Multiplied by 1000 to obtain the result in ms
-    
+
     float *out = (float*)outputBuffer;
     (void) inputBuffer;
 
     for (unsigned int i = 0; i < framesPerBuffer; i++) {
         for (int ch = 0; ch < NUM_CHANNELS; ch++) out[i * NUM_CHANNELS + ch] = 0.0f;
 
-        if (masterMute.load()) continue; 
+        if (masterMute.load()) continue;
 
-        float mixL = 0.0f;
-        float mixR = 0.0f;
-        int genIdx = 0;
+        bool hMode = headsetMode.load();
+        float monitorL = 0.0f;
+        float monitorR = 0.0f;
 
-        for (auto& gen : generators) {
-            
+        for (int genIdx = 0; genIdx < NUM_GENERATORS; genIdx++) {
+            auto& gen = generators[genIdx];
+
             // Lines that store the current values being inserted
             float f = gen.freq.load();
-            float aL = gen.ampL.load();
-            float aR = gen.ampR.load();
-            float pL = gen.phaseDegL.load() * (PI / 180.0);
-            float pR = gen.phaseDegR.load() * (PI / 180.0);
+            float a = gen.amp.load();
+            float p = gen.phaseDeg.load() * (PI / 180.0);
 
             double phaseIncrement = (2.0 * PI * f) / SAMPLE_RATE;
             gen.currentBasePhase += phaseIncrement;
             if (gen.currentBasePhase >= 2.0 * PI) gen.currentBasePhase -= 2.0 * PI;
 
-            float sampleL = aL * std::sin(gen.currentBasePhase + pL);
-            float sampleR = aR * std::sin(gen.currentBasePhase + pR);
+            float sample = a * std::sin(gen.currentBasePhase + p);
 
-            if (headsetMode.load()) {
-                mixL += sampleL;
-                mixR += sampleR;
+            if (hMode) {
+                // Fold into Front L/R for headset monitoring: even-indexed channels go L, odd go R
+                if (genIdx % 2 == 0) monitorL += sample;
+                else                 monitorR += sample;
             } else {
-                if (genIdx < NUM_CHANNELS) {
-                    out[i * NUM_CHANNELS + genIdx] = sampleL + sampleR;
-                }
+                // Each generator drives its own physical output channel directly
+                out[i * NUM_CHANNELS + genIdx] = sample;
             }
-            
-            genIdx++;
         }
 
-        if (headsetMode.load()) {
-            out[i * NUM_CHANNELS + 0] = mixL;
-            out[i * NUM_CHANNELS + 1] = mixR;
+        if (hMode) {
+            out[i * NUM_CHANNELS + 0] = monitorL;
+            out[i * NUM_CHANNELS + 1] = monitorR;
         }
     }
     return paContinue;
@@ -111,7 +117,7 @@ static int audioCallback(const void *inputBuffer, void *outputBuffer,
 void runTUI() {
     std::cout << "\n--- TUI Mode Activated ---\n";
     std::cout << "Commands: \n";
-    std::cout << "  'set <id> <freq> <ampL> <ampR> <phaseL> <phaseR>'\n";
+    std::cout << "  'set <id> <freq> <amp> <phase>'\n";
     std::cout << "  'mode <headset|hw>'\n";
     std::cout << "  'mute' / 'unmute'\n";
     std::cout << "  'reset' (Reset all generators to defaults)\n";
@@ -139,31 +145,32 @@ void runTUI() {
             std::cout << "Mode updated.\n";
         }
         else if (cmd == "status") {
-            for(int i=0; i<5; i++) {
-                std::cout << "Gen " << i << ": " << generators[i].freq.load() << "Hz | L:" 
-                          << generators[i].ampL.load() << " R:" << generators[i].ampR.load() << "\n";
+            for (int i = 0; i < NUM_GENERATORS; i++) {
+                std::cout << "Gen " << i << " [" << CH_LABEL[i] << "]: "
+                          << generators[i].freq.load() << "Hz | Amp:"
+                          << generators[i].amp.load() << " Phase:"
+                          << generators[i].phaseDeg.load() << "deg\n";
             }
         }
         else if (cmd == "set") {
-            int id; float f, aL, aR, pL, pR;
-            if (std::cin >> id >> f >> aL >> aR >> pL >> pR && id >= 0 && id < 5) {
+            int id; float f, a, p;
+            if (std::cin >> id >> f >> a >> p && id >= 0 && id < NUM_GENERATORS) {
                 generators[id].freq.store(f);
-                generators[id].ampL.store(aL);
-                generators[id].ampR.store(aR);
-                generators[id].phaseDegL.store(pL);
-                generators[id].phaseDegR.store(pR);
+                generators[id].amp.store(a);
+                generators[id].phaseDeg.store(p);
             } else {
                 std::cout << "Invalid input.\n";
                 std::cin.clear(); std::cin.ignore(10000, '\n');
             }
         }
-        else if (cmd == "help"){
-
+        else if (cmd == "help") {
             std::cout << "The following variables can be manipulated via 'set ...': \n";
-            std::cout << "<id>     Generator ID.                    \t[0;1;2;3;4]\n";
-            std::cout << "<freq>   Signal's frequency.              \t[20:24000] Hz \n";
-            std::cout << "<amp*>   L/R Channel signal amplitude.   \t[0:1] \n";
-            std::cout << "<phase*>  L/R Channel signal phase.   \t[0:360] º\n";
+            std::cout << "<id>     Generator ID (one per physical output channel).\n";
+            for (int i = 0; i < NUM_GENERATORS; i++)
+                std::cout << "         " << i << " = ch" << i << " [" << CH_LABEL[i] << "]\n";
+            std::cout << "<freq>   Signal's frequency.         \t[20:24000] Hz \n";
+            std::cout << "<amp>    Signal amplitude.           \t[0:1] \n";
+            std::cout << "<phase>  Signal phase.               \t[0:360] º\n";
         }
     }
 }
@@ -182,7 +189,6 @@ void runGUI() {
     ImGui_ImplOpenGL3_Init("#version 130");
 
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    guiRunning = true;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -214,18 +220,17 @@ void runGUI() {
         ImGui::End();
 
         ImGui::Begin("Sine Wave Generators");
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < NUM_GENERATORS; i++) {
             ImGui::PushID(i);
-            if (ImGui::CollapsingHeader(("Generator " + std::to_string(i + 1)).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            std::string header = "ch" + std::to_string(i) + "  " + CH_LABEL[i];
+            if (ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
                 float f = generators[i].freq.load();
-                float aL = generators[i].ampL.load(), aR = generators[i].ampR.load();
-                float pL = generators[i].phaseDegL.load(), pR = generators[i].phaseDegR.load();
+                float a = generators[i].amp.load();
+                float p = generators[i].phaseDeg.load();
 
                 if (ImGui::SliderFloat("Frequency (Hz)", &f, 20.0f, 24000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) generators[i].freq.store(f);
-                if (ImGui::SliderFloat("Amplitude L", &aL, 0.0f, 1.0f, "%.3f")) generators[i].ampL.store(aL);
-                if (ImGui::SliderFloat("Amplitude R", &aR, 0.0f, 1.0f, "%.3f")) generators[i].ampR.store(aR);
-                if (ImGui::SliderFloat("Phase L (deg)", &pL, 0.0f, 360.0f, "%.1f")) generators[i].phaseDegL.store(std::fmod(pL, 360.0f));
-                if (ImGui::SliderFloat("Phase R (deg)", &pR, 0.0f, 360.0f, "%.1f")) generators[i].phaseDegR.store(std::fmod(pR, 360.0f));
+                if (ImGui::SliderFloat("Amplitude",      &a, 0.0f,  1.0f,     "%.3f"))                              generators[i].amp.store(a);
+                if (ImGui::SliderFloat("Phase (deg)",    &p, 0.0f,  360.0f,   "%.1f"))                              generators[i].phaseDeg.store(std::fmod(p, 360.0f));
             }
             ImGui::PopID();
         }
@@ -242,10 +247,43 @@ void runGUI() {
     // Cleanup...
 }
 
+// --- Audio Device Selection ---
+//int selectAudioDevice() {
+//    int numDevices = Pa_GetDeviceCount();
+//    std::cout << "\nAvailable audio devices:\n";
+//    for (int i = 0; i < numDevices; i++) {
+//        const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
+//        if (info->maxOutputChannels >= NUM_CHANNELS)
+//            std::cout << "  [" << i << "] " << info->name 
+//                      << " (out: " << info->maxOutputChannels << "ch)\n";
+//    }
+//    std::cout << "Select device index: ";
+//    int choice; std::cin >> choice;
+//    re
+
+// In case of trouble this may solve the problem. Linux tends to order PortAudio to map to virtual audio managers, instead of the actual hardware.
+
+turn choice;
+//}
+
 int main() {
     Pa_Initialize();
     PaStream *stream;
     Pa_OpenDefaultStream(&stream, 0, NUM_CHANNELS, paFloat32, SAMPLE_RATE, FRAMES_PER_BUFFER, audioCallback, nullptr);
+    
+    // --- Audio Device Selection ---
+    //int deviceIdx = selectAudioDevice();
+    //const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(deviceIdx);
+    //
+    //PaStreamParameters outputParams;
+    //outputParams.device                    = deviceIdx;
+    //outputParams.channelCount              = NUM_CHANNELS;
+    //outputParams.sampleFormat              = paFloat32;
+    //outputParams.suggestedLatency          = deviceInfo->defaultLowOutputLatency;
+    //outputParams.hostApiSpecificStreamInfo = nullptr;
+    
+    Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
+
     Pa_StartStream(stream);
 
     std::cout << "Select Mode:\n[1] GUI\n[2] TUI\nChoice: ";
