@@ -259,11 +259,11 @@ void runGUI() {
 //    }
 //    std::cout << "Select device index: ";
 //    int choice; std::cin >> choice;
-//    re
+//    return choice;
 
 // In case of trouble this may solve the problem. Linux tends to order PortAudio to map to virtual audio managers, instead of the actual hardware.
 
-turn choice;
+
 //}
 
 int main() {
@@ -281,8 +281,7 @@ int main() {
     //outputParams.sampleFormat              = paFloat32;
     //outputParams.suggestedLatency          = deviceInfo->defaultLowOutputLatency;
     //outputParams.hostApiSpecificStreamInfo = nullptr;
-    
-    Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
+    //Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
 
     Pa_StartStream(stream);
 
