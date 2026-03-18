@@ -35,6 +35,7 @@ std::vector<Generator> generators(5); // Corresponding to each output
 std::atomic<double> measuredLatency{0.0}; // To measure latency
 std::atomic<bool> headsetMode{true}; // true: Stereo Mix, false: Independent HW Mapping
 std::atomic<bool> masterMute{false}; // Safety kill switch
+
 bool guiRunning = false;
 
 // Helper function to reset all generators
@@ -71,6 +72,8 @@ static int audioCallback(const void *inputBuffer, void *outputBuffer,
         int genIdx = 0;
 
         for (auto& gen : generators) {
+            
+            // Lines that store the current values being inserted
             float f = gen.freq.load();
             float aL = gen.ampL.load();
             float aR = gen.ampR.load();
@@ -92,6 +95,7 @@ static int audioCallback(const void *inputBuffer, void *outputBuffer,
                     out[i * NUM_CHANNELS + genIdx] = sampleL + sampleR;
                 }
             }
+            
             genIdx++;
         }
 
