@@ -153,11 +153,28 @@ class ChladniPhysics:
         f_ref = 1200.0 / np.sqrt(max(speaker.mass_kg, 1e-6) / 0.268)
         return 1.0 / np.sqrt(1.0 + (freq / f_ref)**2)
 
+    @staticmethod
+    def _compensation_gain(freq):
+        """
+        Calculates an equalization transfer function to compensate for the -60dB 
+        attenuation at high frequencies. 
+        Physics rationale: 
+        1. Plate displacement amplitude at resonance scales with 1/omega^2 for a constant force.
+        2. High-frequency modes suffer from area integration losses (the speaker diameter spans multiple wavelengths) and moving mass inertia.
+        A transfer function proportional to frequency squared (or similar exponent) 
+        flattens the structural response (acceleration), giving uniform visual standing waves.
+        """
+        f_ref = 50.0 # baseline reference frequency
+        f = max(float(freq), f_ref)
+        # Empirical power law to recover lost amplitude (approx +40 to +60dB compensation)
+        return (f / f_ref) ** 1.8
+
     def _speaker_drive_gain(self, freq, transducers, speaker):
         return (
             self._speaker_bandwidth_gain(freq, speaker)
             * self._speaker_power_gain(transducers)
             * self._speaker_mass_gain(freq, speaker)
+            * self._compensation_gain(freq)
         )
 
     # ══════════════════════════════════════════════════════════════════
