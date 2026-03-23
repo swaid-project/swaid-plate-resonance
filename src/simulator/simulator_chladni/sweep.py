@@ -22,6 +22,15 @@ class SweepWindow:
     IOU_DUPLICATE = 0.90
     HASH_SIZE = 24
 
+    @staticmethod
+    def _with_phase(transducer, phase_deg):
+        """Return transducer tuple with updated phase, preserving extras."""
+        t = list(transducer)
+        if len(t) < 4:
+            raise ValueError("Transducer must have at least 4 fields.")
+        t[3] = phase_deg
+        return tuple(t)
+
     def __init__(self, parent, physics, params):
         """
         params dict keys:
@@ -73,24 +82,39 @@ class SweepWindow:
             if phase_opt == "Fase Atual":
                 combinations.append(("Atual", base_trans))
             elif phase_opt == "Uniforme (0°)":
-                combinations.append(("Uniforme", [(x, y, a, 0.0) for (x, y, a, p) in base_trans]))
+                combinations.append((
+                    "Uniforme",
+                    [self._with_phase(t, 0.0) for t in base_trans],
+                ))
             else:
                 # "Múltiplas Fases (Auto)"
-                combinations.append(("Unif", [(x, y, a, 0.0) for (x, y, a, p) in base_trans]))
+                combinations.append((
+                    "Unif",
+                    [self._with_phase(t, 0.0) for t in base_trans],
+                ))
                 if n_t >= 4:
                     # Distintos: 0, 90, 180, 270
                     phases = [0.0, 90.0, 180.0, 270.0]
-                    c_dist = [(base_trans[i][0], base_trans[i][1], base_trans[i][2], phases[i % 4]) for i in range(n_t)]
+                    c_dist = [
+                        self._with_phase(base_trans[i], phases[i % 4])
+                        for i in range(n_t)
+                    ]
                     combinations.append(("Distintos", c_dist))
                     
                     # Pares Adjacentes: 0, 0, 180, 180
                     phases_adj = [0.0, 0.0, 180.0, 180.0]
-                    c_adj = [(base_trans[i][0], base_trans[i][1], base_trans[i][2], phases_adj[i % 4]) for i in range(n_t)]
+                    c_adj = [
+                        self._with_phase(base_trans[i], phases_adj[i % 4])
+                        for i in range(n_t)
+                    ]
                     combinations.append(("Pares_Adj", c_adj))
                     
                     # Pares Diagonais: 0, 180, 180, 0
                     phases_diag = [0.0, 180.0, 180.0, 0.0]
-                    c_diag = [(base_trans[i][0], base_trans[i][1], base_trans[i][2], phases_diag[i % 4]) for i in range(n_t)]
+                    c_diag = [
+                        self._with_phase(base_trans[i], phases_diag[i % 4])
+                        for i in range(n_t)
+                    ]
                     combinations.append(("Pares_Diag", c_diag))
             
             raw_frames = []
