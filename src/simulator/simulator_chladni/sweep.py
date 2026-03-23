@@ -17,6 +17,11 @@ class SweepWindow:
     """Toplevel window that runs a frequency sweep, displaying and
     optionally saving the Chladni pattern at each step."""
 
+    # Uniqueness filter settings for automatic sweeps.
+    NODAL_THRESHOLD = 0.80
+    IOU_DUPLICATE = 0.90
+    HASH_SIZE = 24
+
     def __init__(self, parent, physics, params):
         """
         params dict keys:
@@ -88,9 +93,13 @@ class SweepWindow:
                     c_diag = [(base_trans[i][0], base_trans[i][1], base_trans[i][2], phases_diag[i % 4]) for i in range(n_t)]
                     combinations.append(("Pares_Diag", c_diag))
             
+            raw_frames = []
             for f in ordered_freqs:
                 for name, t_conf in combinations:
-                    self.frames.append((f, t_conf, name))
+                    raw_frames.append((f, t_conf, name))
+
+            # Keep only the best representative for each unique nodal symbol.
+            self.frames = self._filter_unique_symbols(raw_frames)
                     
         self.n_total = len(self.frames)
 
@@ -101,6 +110,97 @@ class SweepWindow:
         self.win.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._build_ui()
+
+    @staticmethod
+    def _nodal_mask_from_sand(sand, threshold):
+        """Extract nodal lines as a binary mask from normalized sand map."""
+        return sand >= float(threshold)
+
+    @staticmethod
+    def _dilate_mask_8(mask):
+        """One-pixel 8-neighborhood dilation for small spatial tolerance."""
+        p = np.pad(mask, ((1, 1), (1, 1)), mode="constant")
+        return (
+            p[1:-1, 1:-1]
+            | p[:-2, :-2] | p[:-2, 1:-1] | p[:-2, 2:]
+            | p[1:-1, :-2] | p[1:-1, 2:]
+            | p[2:, :-2] | p[2:, 1:-1] | p[2:, 2:]
+        )
+
+    @staticmethod
+    def _resize_bool_nearest(mask, out_h, out_w):
+        """Nearest-neighbor resize for boolean masks without extra deps."""
+        h, w = mask.shape
+        yi = np.clip(np.round(np.linspace(0, h - 1, out_h)).astype(int),
+                     0, h - 1)
+        xi = np.clip(np.round(np.linspace(0, w - 1, out_w)).astype(int),
+                     0, w - 1)
+        return mask[np.ix_(yi, xi)]
+
+    @staticmethod
+    def _mask_hash(mask, hash_size):
+        """Compact hash key from a downsampled binary nodal mask."""
+        small = SweepWindow._resize_bool_nearest(mask, hash_size, hash_size)
+        packed = np.packbits(small.astype(np.uint8), axis=None)
+        return packed.tobytes()
+
+    @staticmethod
+    def _mask_iou(mask_a, mask_b):
+        """Intersection over Union of two binary masks."""
+        inter = np.count_nonzero(mask_a & mask_b)
+        union = np.count_nonzero(mask_a | mask_b)
+        if union == 0:
+            return 1.0
+        return inter / union
+
+    @staticmethod
+    def _symbol_quality(sand):
+        """Higher means clearer symbol (stronger contrast and line salience)."""
+        p95 = float(np.percentile(sand, 95.0))
+        p05 = float(np.percentile(sand, 5.0))
+        return p95 - p05
+
+    def _filter_unique_symbols(self, frames):
+        """Deduplicate automatic sweep frames using nodal-mask IoU."""
+        if not frames:
+            return []
+
+        p = self.params
+        entries = []
+        buckets = {}
+
+        for freq, trans, phase_label in frames:
+            sand, _ = self.physics.sand_and_3d(
+                freq, p["Lx"], p["Ly"], p["D"], p["rho"], p["h"],
+                trans, n_modes=p["n_modes"], damping=p["damping"],
+                sign=p["sign"], geometry=p["geometry"])
+
+            mask = self._nodal_mask_from_sand(sand, self.NODAL_THRESHOLD)
+            mask_tol = self._dilate_mask_8(mask)
+            quality = self._symbol_quality(sand)
+            key = self._mask_hash(mask_tol, self.HASH_SIZE)
+
+            dup_idx = None
+            for idx in buckets.get(key, []):
+                iou = self._mask_iou(mask_tol, entries[idx]["mask"])
+                if iou >= self.IOU_DUPLICATE:
+                    dup_idx = idx
+                    break
+
+            if dup_idx is None:
+                idx_new = len(entries)
+                entries.append({
+                    "frame": (freq, trans, phase_label),
+                    "mask": mask_tol,
+                    "quality": quality,
+                })
+                buckets.setdefault(key, []).append(idx_new)
+            elif quality > entries[dup_idx]["quality"]:
+                entries[dup_idx]["frame"] = (freq, trans, phase_label)
+                entries[dup_idx]["mask"] = mask_tol
+                entries[dup_idx]["quality"] = quality
+
+        return [e["frame"] for e in entries]
 
     def _build_ui(self):
         top = ttk.Frame(self.win)
