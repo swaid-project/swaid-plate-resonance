@@ -140,7 +140,7 @@ class ChladniPhysics:
 
     @staticmethod
     def _speaker_power_gain(transducers):
-        amps = np.array([max(0.0, amp) for _, _, amp, _ in transducers],
+        amps = np.array([max(0.0, t[2]) for t in transducers],
                         dtype=float)
         if amps.size == 0:
             return 0.0
@@ -250,13 +250,12 @@ class ChladniPhysics:
         self._lambda_rect_nm = lambda_nm
 
     def _coupling_rect(self, transducers, Lx, Ly, sign, speaker=None):
-        """Compute forcing coefficients for each mode.
-        transducers: list of (tx, ty, amplitude, phase_rad).
-        """
+        """Compute forcing coefficients for each mode."""
         if speaker is None:
             speaker = self.speaker
         F = np.zeros(len(self._ns), dtype=complex)
-        for tx, ty, amp, phase in transducers:
+        for t in transducers:
+            tx = t[0]; ty = t[1]; amp = t[2]; phase = t[3]
             x_s = tx + Lx / 2.0
             y_s = ty + Ly / 2.0
             x_s = float(np.clip(x_s, 0.0, Lx))
@@ -354,7 +353,8 @@ class ChladniPhysics:
         # Effective modal wavelength using circumferentially averaged wavenumber.
         lambda_mode = 2.0 * np.pi * R / np.maximum(self._lambda_nm, 1e-12)
         area_gain = np.exp(- (speaker.diameter_m / np.maximum(lambda_mode, 1e-12))**2)
-        for tx, ty, amp, phase in transducers:
+        for t in transducers:
+            tx = t[0]; ty = t[1]; amp = t[2]; phase = t[3]
             r_t = np.sqrt(tx**2 + ty**2)
             theta_t = np.arctan2(ty, tx)
             for k in range(len(self._ns)):
@@ -380,95 +380,96 @@ class ChladniPhysics:
             raise ValueError("Provide D, rho, h or use material_name + thickness_mm.")
         return D, rho, h
 
+    def _get_responses(self, freq, Lx, Ly, D, rho, h, transducers, n_modes, damping, sign, geometry, speaker, material_name, thickness_mm, cartesian=False):
+        D, rho, h = self._resolve_plate_inputs(D, rho, h, material_name=material_name, thickness_mm=thickness_mm)
+        if speaker is None:
+            speaker = self.speaker
+            
+        freq_groups = {}
+        for t in transducers:
+            f_t = t[4] if (len(t) > 4 and t[4] is not None and t[4] > 0) else freq
+            if f_t not in freq_groups:
+                freq_groups[f_t] = []
+            freq_groups[f_t].append(t)
+            
+        resps = []
+        for f_t, tg in freq_groups.items():
+            omega = 2.0 * np.pi * f_t
+            if geometry == "Circular":
+                R = Lx / 2.0
+                self._build_cache_circ(R, n_modes, D, rho, h)
+                F_nm = self._coupling_circ(tg, R, speaker=speaker)
+                F_nm = F_nm * self._speaker_drive_gain(f_t, tg, speaker)
+                denom = self._omega_nm**2 - omega**2 + 2j * damping * self._omega_nm * omega
+                safe = np.abs(denom) > 1e-30
+                coeffs = np.zeros(len(F_nm), dtype=complex)
+                coeffs[safe] = F_nm[safe] / denom[safe]
+                
+                if cartesian:
+                    X_phys = self.X_norm * Lx
+                    Y_phys = self.Y_norm * Lx  # Ly = Lx for circular
+                    R_phys = np.sqrt(X_phys**2 + Y_phys**2)
+                    Theta_phys = np.arctan2(Y_phys, X_phys)
+                    n3 = self._ns[:, None, None]
+                    lam3 = self._lambda_nm[:, None, None]
+                    R3 = R_phys[None, :, :]
+                    T3 = Theta_phys[None, :, :]
+                    modes_cart = jn(n3, lam3 * R3 / R) * np.cos(n3 * T3)
+                    resp = np.einsum("k,kij->ij", coeffs, modes_cart)
+                    resp[R_phys > R] = 0.0
+                else:
+                    resp = np.einsum("k,kij->ij", coeffs, self._modes)
+                resps.append(resp)
+            else:
+                self._build_cache_rect(Lx, Ly, sign, n_modes, D, rho, h)
+                F_nm = self._coupling_rect(tg, Lx, Ly, sign, speaker)
+                F_nm = F_nm * self._speaker_drive_gain(f_t, tg, speaker)
+                denom = self._omega_nm**2 - omega**2 + 2j * damping * self._omega_nm * omega
+                safe = np.abs(denom) > 1e-30
+                coeffs = np.zeros(len(F_nm), dtype=complex)
+                coeffs[safe] = F_nm[safe] / denom[safe]
+                resp = np.einsum("k,kij->ij", coeffs, self._modes)
+                resps.append(resp)
+        return resps
+
     def driven_response(self, freq, Lx, Ly, D, rho, h, transducers,
                         n_modes=8, damping=0.005, sign=1,
                         geometry="Quadrada", speaker=None,
                         material_name=None, thickness_mm=None):
         """Compute driven response for any geometry.
-        transducers: list of (tx, ty, amplitude, phase_rad)
+        Returns the snapshot superposition of all responses.
+        transducers: list of (tx, ty, amplitude, phase_rad, [freq])
         """
-        D, rho, h = self._resolve_plate_inputs(D, rho, h,
-                                               material_name=material_name,
-                                               thickness_mm=thickness_mm)
-        if speaker is None:
-            speaker = self.speaker
-        omega = 2.0 * np.pi * freq
-
-        if geometry == "Circular":
-            R = Lx / 2.0
-            self._build_cache_circ(R, n_modes, D, rho, h)
-            F_nm = self._coupling_circ(transducers, R, speaker=speaker)
-        else:
-            self._build_cache_rect(Lx, Ly, sign, n_modes, D, rho, h)
-            F_nm = self._coupling_rect(transducers, Lx, Ly, sign,
-                                       speaker=speaker)
-
-        F_nm = F_nm * self._speaker_drive_gain(freq, transducers, speaker)
-
-        denom = self._omega_nm**2 - omega**2 + \
-                2j * damping * self._omega_nm * omega
-        safe = np.abs(denom) > 1e-30
-        coeffs = np.zeros(len(F_nm), dtype=complex)
-        coeffs[safe] = F_nm[safe] / denom[safe]
-        resp = np.einsum("k,kij->ij", coeffs, self._modes)
-        return resp
+        resps = self._get_responses(freq, Lx, Ly, D, rho, h, transducers, n_modes, damping, sign, geometry, speaker, material_name, thickness_mm, cartesian=False)
+        return sum(resps) if resps else np.zeros((self.res, self.res), dtype=complex)
 
     def driven_response_cartesian(self, freq, Lx, Ly, D, rho, h,
                                    transducers, n_modes=8, damping=0.005,
                                    sign=1, geometry="Quadrada", speaker=None,
                                    material_name=None, thickness_mm=None):
         """Compute driven response on the Cartesian (X_norm, Y_norm) grid.
-        For circular plates, evaluates mode shapes at Cartesian grid points
-        instead of the polar grid. Used by particle simulation.
+        Returns an effective response encoding the time-averaged intensity sum.
         """
-        if geometry != "Circular":
-            return self.driven_response(freq, Lx, Ly, D, rho, h,
-                                        transducers, n_modes, damping,
-                                        sign, geometry, speaker,
-                                        material_name, thickness_mm)
-
-        D, rho, h = self._resolve_plate_inputs(D, rho, h,
-                                               material_name=material_name,
-                                               thickness_mm=thickness_mm)
-        if speaker is None:
-            speaker = self.speaker
-        R = Lx / 2.0
-        omega = 2.0 * np.pi * freq
-        self._build_cache_circ(R, n_modes, D, rho, h)
-        F_nm = self._coupling_circ(transducers, R, speaker=speaker)
-        F_nm = F_nm * self._speaker_drive_gain(freq, transducers, speaker)
-
-        denom = self._omega_nm**2 - omega**2 + \
-                2j * damping * self._omega_nm * omega
-        safe = np.abs(denom) > 1e-30
-        coeffs = np.zeros(len(F_nm), dtype=complex)
-        coeffs[safe] = F_nm[safe] / denom[safe]
-
-        # Evaluate modes on Cartesian grid
-        X_phys = self.X_norm * Lx
-        Y_phys = self.Y_norm * Lx  # Ly = Lx for circular
-        R_phys = np.sqrt(X_phys**2 + Y_phys**2)
-        Theta_phys = np.arctan2(Y_phys, X_phys)
-
-        n3 = self._ns[:, None, None]
-        lam3 = self._lambda_nm[:, None, None]
-        R3 = R_phys[None, :, :]
-        T3 = Theta_phys[None, :, :]
-
-        modes_cart = jn(n3, lam3 * R3 / R) * np.cos(n3 * T3)
-        resp = np.einsum("k,kij->ij", coeffs, modes_cart)
-        resp[R_phys > R] = 0.0
-        return resp
+        resps = self._get_responses(freq, Lx, Ly, D, rho, h, transducers, n_modes, damping, sign, geometry, speaker, material_name, thickness_mm, cartesian=True)
+        if not resps: 
+            return np.zeros((self.res, self.res), dtype=complex)
+        
+        # Superpose powers for decoupled frequencies realistically
+        amp = np.sqrt(sum(np.abs(r)**2 for r in resps))
+        return amp + 0j
 
     def sand_and_3d(self, freq, Lx, Ly, D, rho, h, transducers,
                     n_modes=8, damping=0.005, sign=1,
                     geometry="Quadrada", speaker=None,
                     material_name=None, thickness_mm=None):
         """Returns (sand_pattern, Z_3d_normalized)."""
-        resp = self.driven_response(freq, Lx, Ly, D, rho, h, transducers,
-                                    n_modes, damping, sign, geometry,
-                                    speaker, material_name, thickness_mm)
-        amp = np.abs(resp)
+        resps = self._get_responses(freq, Lx, Ly, D, rho, h, transducers, n_modes, damping, sign, geometry, speaker, material_name, thickness_mm, cartesian=False)
+        
+        if not resps:
+            return np.zeros((self.res, self.res)), np.zeros((self.res, self.res))
+
+        amp_sq = sum(np.abs(r)**2 for r in resps)
+        amp = np.sqrt(amp_sq)
         mx = amp.max()
         amp_n = amp / mx if mx > 0 else amp
         sand = np.exp(-35.0 * amp_n**2)
@@ -476,7 +477,7 @@ class ChladniPhysics:
         if geometry == "Circular":
             sand = np.where(self._circ_mask, sand, 0.0)
 
-        Z = np.real(resp)
+        Z = sum(np.real(r) for r in resps)
         zmx = np.abs(Z).max()
         if zmx > 0:
             Z = Z / zmx

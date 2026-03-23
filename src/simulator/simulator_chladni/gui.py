@@ -7,9 +7,9 @@ matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 
-from .constants import MATERIALS, GEOMETRIES, SAND_CMAP, Theme
+from .constants import MATERIALS, MATERIAL_CATALOG, GEOMETRIES, SAND_CMAP, Theme
 from .physics import ChladniPhysics
 from .sweep import SweepWindow
 
@@ -25,8 +25,8 @@ class ChladniApp:
         root.configure(bg=Theme.BG)
 
         self.physics = ChladniPhysics(resolution=200)
-        # transducers: [(x, y, amplitude, phase_rad), ...]
-        self.transducers = [(0.0, 0.0, 1.0, 0.0)]
+        # transducers: [(x, y, amplitude, phase_rad, freq_hz), ...]  (using None for global freq)
+        self.transducers = [(0.0, 0.0, 1.0, 0.0, None)]
         self._drag_idx = None
         self._update_id = None
         self._dragging = False
@@ -298,7 +298,16 @@ class ChladniApp:
         self.tphase_entry.pack(side=tk.LEFT, padx=(2, 5))
         self.tphase_entry.insert(0, "0")
 
-        ttk.Button(pf2, text="✓", width=2,
+        pf3 = ttk.Frame(self.ctrl)
+        pf3.pack(fill=tk.X, padx=10, pady=2)
+        ttk.Label(pf3, text="Freq(Hz):", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        self.tfreq_entry = tk.Entry(pf3, width=6, bg=Theme.BG2, fg=Theme.FG,
+                                    insertbackground=Theme.FG,
+                                    font=("Consolas", 9))
+        self.tfreq_entry.pack(side=tk.LEFT, padx=(2, 5))
+        ttk.Label(pf3, text="(vazio = Global)", style="Small.TLabel").pack(side=tk.LEFT)
+
+        ttk.Button(pf3, text="✓", width=2,
                    command=self._apply_pos).pack(side=tk.LEFT, padx=4)
         self.trans_lb.bind("<<ListboxSelect>>", self._on_trans_select)
 
@@ -318,7 +327,7 @@ class ChladniApp:
             sliderrelief="flat", activebackground=Theme.ACCENT)
         self.phase_slider.pack(fill=tk.X)
 
-        # Transducer presets
+        # Transducers
         ttk.Label(self.ctrl, text="Presets de transdutores:",
                   style="Small.TLabel").pack(anchor=tk.W, padx=10,
                                              pady=(6, 0))
@@ -332,6 +341,20 @@ class ChladniApp:
         ]:
             ttk.Button(preset_f, text=label,
                        command=cmd).pack(side=tk.LEFT, padx=2)
+
+        # Tools
+        ttk.Label(self.ctrl, text="Otimização Automática:",
+                  style="Small.TLabel").pack(anchor=tk.W, padx=10,
+                                             pady=(6, 0))
+        tools_f = ttk.Frame(self.ctrl)
+        tools_f.pack(fill=tk.X, padx=10, pady=2)
+        ttk.Button(tools_f, text="Encontrar Melhor Posição (x, y)",
+                   command=self._optimize_trans_pos).pack(side=tk.LEFT, padx=2)
+        
+        tools_f2 = ttk.Frame(self.ctrl)
+        tools_f2.pack(fill=tk.X, padx=10, pady=2)
+        ttk.Button(tools_f2, text="Gerar Relatório Completo (Todas as Chapas)",
+                   command=self._generate_global_optimization_report).pack(side=tk.LEFT, padx=2)
 
         # Grid toggle
         self.grid_var = tk.BooleanVar(value=True)
@@ -572,12 +595,15 @@ class ChladniApp:
     def _refresh_trans(self):
         prev_idx = self._selected_trans_idx
         self.trans_lb.delete(0, tk.END)
-        for i, (x, y, amp, phase) in enumerate(self.transducers):
+        for i, t in enumerate(self.transducers):
+            x, y, amp, phase = t[0], t[1], t[2], t[3]
+            tfreq = t[4] if len(t) > 4 else None
             deg = np.degrees(phase)
+            f_str = f" f={tfreq}Hz" if tfreq else " f=Global"
             self.trans_lb.insert(
                 tk.END,
                 f"  T{i+1}: ({x:+.3f}, {y:+.3f})m  "
-                f"A={amp:.2f} φ={deg:.0f}°")
+                f"A={amp:.2f} φ={deg:.0f}°{f_str}")
         # Restore selection
         if prev_idx < len(self.transducers):
             self.trans_lb.selection_set(prev_idx)
@@ -587,7 +613,7 @@ class ChladniApp:
         Lx, Ly = self._get_dims()
         tx = round(np.random.uniform(-Lx / 3, Lx / 3), 4)
         ty = round(np.random.uniform(-Ly / 3, Ly / 3), 4)
-        self.transducers.append((tx, ty, 1.0, 0.0))
+        self.transducers.append((tx, ty, 1.0, 0.0, None))
         self._refresh_trans()
         self.full_update()
 
@@ -596,7 +622,7 @@ class ChladniApp:
         if sel:
             self.transducers.pop(sel[0])
         if not self.transducers:
-            self.transducers = [(0.0, 0.0, 1.0, 0.0)]
+            self.transducers = [(0.0, 0.0, 1.0, 0.0, None)]
         self._refresh_trans()
         self.full_update()
 
@@ -604,9 +630,11 @@ class ChladniApp:
         sel = self.trans_lb.curselection()
         idx = sel[0] if sel else self._selected_trans_idx
         if idx < len(self.transducers):
-            x, y, amp, phase = self.transducers[idx]
+            t = self.transducers[idx]
+            x, y, amp, phase = t[0], t[1], t[2], t[3]
+            tfreq = t[4] if len(t) > 4 else None
             # Shift phase by π (180°)
-            self.transducers[idx] = (x, y, amp, (phase + np.pi) % (2 * np.pi))
+            self.transducers[idx] = (x, y, amp, (phase + np.pi) % (2 * np.pi), tfreq)
         self._refresh_trans()
         self.full_update()
 
@@ -614,8 +642,10 @@ class ChladniApp:
         sel = self.trans_lb.curselection()
         idx = sel[0] if sel else self._selected_trans_idx
         if idx < len(self.transducers):
-            _, _, amp, phase = self.transducers[idx]
-            self.transducers[idx] = (0.0, 0.0, amp, phase)
+            t = self.transducers[idx]
+            amp, phase = t[2], t[3]
+            tfreq = t[4] if len(t) > 4 else None
+            self.transducers[idx] = (0.0, 0.0, amp, phase, tfreq)
         self._refresh_trans()
         self.full_update()
 
@@ -626,7 +656,9 @@ class ChladniApp:
         idx = sel[0]
         self._selected_trans_idx = idx
         if idx < len(self.transducers):
-            x, y, amp, phase = self.transducers[idx]
+            t = self.transducers[idx]
+            x, y, amp, phase = t[0], t[1], t[2], t[3]
+            tfreq = t[4] if len(t) > 4 else None
             self.tx_entry.delete(0, tk.END)
             self.tx_entry.insert(0, f"{x:.4f}")
             self.ty_entry.delete(0, tk.END)
@@ -635,6 +667,9 @@ class ChladniApp:
             self.tamp_entry.insert(0, f"{amp:.2f}")
             self.tphase_entry.delete(0, tk.END)
             self.tphase_entry.insert(0, f"{np.degrees(phase):.0f}")
+            self.tfreq_entry.delete(0, tk.END)
+            if tfreq is not None:
+                self.tfreq_entry.insert(0, f"{tfreq:.1f}")
             self.phase_slider_var.set(np.degrees(phase) % 360)
 
     def _on_phase_slider(self, val):
@@ -643,9 +678,11 @@ class ChladniApp:
         idx = sel[0] if sel else self._selected_trans_idx
         if idx >= len(self.transducers):
             return
-        x, y, amp, _ = self.transducers[idx]
+        t = self.transducers[idx]
+        x, y, amp = t[0], t[1], t[2]
+        tfreq = t[4] if len(t) > 4 else None
         phase_rad = np.radians(float(val)) % (2 * np.pi)
-        self.transducers[idx] = (x, y, amp, phase_rad)
+        self.transducers[idx] = (x, y, amp, phase_rad, tfreq)
         self.tphase_entry.delete(0, tk.END)
         self.tphase_entry.insert(0, f"{float(val):.0f}")
         self._refresh_trans()
@@ -661,6 +698,8 @@ class ChladniApp:
             y = float(self.ty_entry.get())
             amp = float(self.tamp_entry.get())
             phase_deg = float(self.tphase_entry.get())
+            tf_str = self.tfreq_entry.get().strip()
+            tfreq = float(tf_str) if tf_str else None
         except ValueError:
             self.warn_lbl.config(
                 text="⚠ Valor inválido. Usa números (ex: 0.05)")
@@ -679,14 +718,14 @@ class ChladniApp:
             y = max(-Ly / 2, min(Ly / 2, y))
         amp = max(0.0, amp)
         phase_rad = np.radians(phase_deg) % (2 * np.pi)
-        self.transducers[idx] = (round(x, 4), round(y, 4), amp, phase_rad)
+        self.transducers[idx] = (round(x, 4), round(y, 4), amp, phase_rad, tfreq)
         self.phase_slider_var.set(phase_deg % 360)
         self._refresh_trans()
         self.full_update()
 
     # ── Transducer presets ────────────────────────────────────────────
     def _preset_1_center(self):
-        self.transducers = [(0.0, 0.0, 1.0, 0.0)]
+        self.transducers = [(0.0, 0.0, 1.0, 0.0, None)]
         self._refresh_trans()
         self.full_update()
 
@@ -694,10 +733,10 @@ class ChladniApp:
         Lx, Ly = self._get_dims()
         d = 0.35
         self.transducers = [
-            (-Lx * d, -Ly * d, 1.0, 0.0),
-            ( Lx * d, -Ly * d, 1.0, np.pi),
-            (-Lx * d,  Ly * d, 1.0, np.pi),
-            ( Lx * d,  Ly * d, 1.0, 0.0),
+            (-Lx * d, -Ly * d, 1.0, 0.0, None),
+            ( Lx * d, -Ly * d, 1.0, np.pi, None),
+            (-Lx * d,  Ly * d, 1.0, np.pi, None),
+            ( Lx * d,  Ly * d, 1.0, 0.0, None),
         ]
         self._refresh_trans()
         self.full_update()
@@ -706,10 +745,10 @@ class ChladniApp:
         Lx, Ly = self._get_dims()
         d = 0.3
         self.transducers = [
-            ( 0.0,    -Ly * d, 1.0, 0.0),
-            ( 0.0,     Ly * d, 1.0, 0.0),
-            (-Lx * d,  0.0,    1.0, np.pi),
-            ( Lx * d,  0.0,    1.0, np.pi),
+            ( 0.0,    -Ly * d, 1.0, 0.0, None),
+            ( 0.0,     Ly * d, 1.0, 0.0, None),
+            (-Lx * d,  0.0,    1.0, np.pi, None),
+            ( Lx * d,  0.0,    1.0, np.pi, None),
         ]
         self._refresh_trans()
         self.full_update()
@@ -724,9 +763,156 @@ class ChladniApp:
             self.transducers.append((
                 round(r * np.cos(angle), 4),
                 round(r * np.sin(angle), 4),
-                1.0, phase))
+                1.0, phase, None))
         self._refresh_trans()
         self.full_update()
+
+    def _optimize_trans_pos(self):
+        """Auto-calculate the best placing based on maximum resonance energy."""
+        Lx, Ly = self._get_dims()
+        h = self.h_var.get()
+        mat = MATERIALS[self.material_var.get()]
+        D = self.physics.flexural_rigidity(mat["E"], h, mat["nu"])
+        geom = self.geom_var.get()
+        
+        # Determine search grid space (quadrant 1 to exploit symmetry)
+        if geom == "Circular":
+            R = Lx / 2.0
+            xs = np.linspace(0, R * 0.95, 12)
+            ys = np.linspace(0, R * 0.95, 12)
+        else:
+            xs = np.linspace(0, (Lx / 2) * 0.95, 12)
+            ys = np.linspace(0, (Ly / 2) * 0.95, 12)
+            
+        max_score = -1
+        best_pos = (0.0, 0.0)
+        
+        # Backup original progress info to display searching state
+        self.info_text.config(state=tk.NORMAL)
+        self.info_text.delete("1.0", tk.END)
+        self.info_text.insert("1.0", "A calcular a melhor posição (x, y)...\nPor favor aguarde um momento.")
+        self.info_text.config(state=tk.DISABLED)
+        self.root.update_idletasks()
+
+        for tx in xs:
+            for ty in ys:
+                if geom == "Circular" and np.sqrt(tx**2 + ty**2) > R * 0.95:
+                    continue
+                    
+                test_trans = [(tx, ty, 1.0, 0.0, None)]
+                freqs, energy = self.physics.frequency_sweep(
+                    Lx, Ly, D, mat["rho"], h, test_trans,
+                    freq_range=(20, 5000), n_modes=self.nmodes_var.get(),
+                    damping=self.damp_var.get(), sign=self.sign_var.get(),
+                    n_points=150, geometry=geom)
+                
+                score = np.mean(energy)
+                if score > max_score:
+                    max_score = score
+                    best_pos = (tx, ty)
+        
+        # Update the currently selected transducer OR the first one
+        idx = self.trans_lb.curselection()[0] if self.trans_lb.curselection() else self._selected_trans_idx
+        if idx >= len(self.transducers):
+            if not self.transducers:
+                self.transducers.append((0.0, 0.0, 1.0, 0.0, None))
+            idx = 0
+            
+        t_sel = self.transducers[idx]
+        amp = t_sel[2]
+        phase = t_sel[3]
+        tfreq = t_sel[4] if len(t_sel) > 4 else None
+        self.transducers[idx] = (round(best_pos[0], 4), round(best_pos[1], 4), amp, phase, tfreq)
+            
+        self._refresh_trans()
+        self.full_update()
+
+    def _generate_global_optimization_report(self):
+        """Generates a sweep report for all plate dimension and material combinations."""
+        file_path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Guardar Relatório de Otimização",
+            defaultextension=".md",
+            filetypes=[("Markdown files", "*.md"), ("All files", "*.*")],
+            initialfile="placement_sweep_report.md"
+        )
+        
+        if not file_path:
+            return
+            
+        self.info_text.config(state=tk.NORMAL)
+        self.info_text.delete("1.0", tk.END)
+        self.info_text.insert("1.0", "A gerar relatório de otimização detalhado...\nIsto poderá demorar vários minutos.")
+        self.info_text.config(state=tk.DISABLED)
+        self.root.update_idletasks()
+        
+        results = []
+        original_res = self.physics.res
+        self.physics.res = 50
+        
+        try:
+            for mat_name, spec in MATERIAL_CATALOG.items():
+                for th_mm in spec.thicknesses_mm:
+                    for size_mm in spec.sizes_mm:
+                        if size_mm[0] != size_mm[1]:
+                            continue  # Focus on square plates
+                            
+                        Lx = size_mm[0] / 1000.0
+                        Ly = size_mm[1] / 1000.0
+                        h = th_mm / 1000.0
+                        
+                        D = ChladniPhysics.flexural_rigidity(spec.E, h, spec.nu)
+                        rho = spec.rho
+                        
+                        xs = np.linspace(0, (Lx / 2) * 0.95, 12)
+                        ys = np.linspace(0, (Ly / 2) * 0.95, 12)
+                        
+                        best_pos = None
+                        max_score = -1
+                        
+                        for tx in xs:
+                            for ty in ys:
+                                freqs, energy = self.physics.frequency_sweep(
+                                    Lx, Ly, D, rho, h, [(tx, ty, 1.0, 0.0, None)],
+                                    freq_range=(20, 5000), n_modes=10, damping=0.005,
+                                    sign=1, n_points=150, geometry="Quadrada"
+                                )
+                                score = np.mean(energy)
+                                if score > max_score:
+                                    max_score = score
+                                    best_pos = (tx, ty)
+                        
+                        norm_x = best_pos[0] / Lx
+                        norm_y = best_pos[1] / Ly
+                        results.append({
+                            "mat": mat_name,
+                            "size_mm": size_mm[0],
+                            "th_mm": th_mm,
+                            "best_x": best_pos[0],
+                            "best_y": best_pos[1],
+                            "norm_pos": (norm_x, norm_y),
+                            "score": max_score
+                        })
+                        
+                        # Update UI periodically to show progress
+                        self.root.update()
+
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write("# Plate Dimensions & Transducer Placement Sweep Report\n\n")
+                f.write("A optimal automated mapping for transducer placement based on plate physical properties.\n\n")
+                f.write("| Material | Size (mm) | Thickness (mm) | Best X (m) | Best Y (m) | Relative Position | Score |\n")
+                f.write("|----------|-----------|----------------|------------|------------|-------------------|-------|\n")
+                for r in results:
+                    rel = f"({r['norm_pos'][0]:.2f}L, {r['norm_pos'][1]:.2f}L)"
+                    f.write(f"| {r['mat']} | {r['size_mm']}x{r['size_mm']} | {r['th_mm']} | {r['best_x']:.3f} | {r['best_y']:.3f} | {rel} | {r['score']:.2e} |\n")
+                    
+            messagebox.showinfo("Sucesso", f"Relatório guardado em:\n{file_path}", parent=self.root)
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro: {e}", parent=self.root)
+        finally:
+            self.physics.res = original_res
+            self.full_update()
 
     # ── Plate interaction (click / drag / double-click) ───────────────
     def _on_press(self, evt):
@@ -750,27 +936,31 @@ class ChladniApp:
         # Double-click → flip phase
         if evt.dblclick:
             best_i, best_d = None, 1e18
-            for i, (tx, ty, _, _) in enumerate(self.transducers):
+            for i, t in enumerate(self.transducers):
+                tx, ty = t[0], t[1]
                 d = (x - tx)**2 + (y - ty)**2
                 if d < best_d:
                     best_i, best_d = i, d
             if best_i is not None and best_d < (Lx * 0.06)**2:
-                tx, ty, amp, phase = self.transducers[best_i]
+                t = self.transducers[best_i]
+                tx, ty, amp, phase = t[0], t[1], t[2], t[3]
+                tfreq = t[4] if len(t) > 4 else None
                 self.transducers[best_i] = (tx, ty, amp,
-                                            (phase + np.pi) % (2 * np.pi))
+                                            (phase + np.pi) % (2 * np.pi), tfreq)
                 self._refresh_trans()
                 self.full_update()
             return
 
         # Near existing → drag
-        for i, (tx, ty, _, _) in enumerate(self.transducers):
+        for i, t in enumerate(self.transducers):
+            tx, ty = t[0], t[1]
             if (x - tx)**2 + (y - ty)**2 < (Lx * 0.04)**2:
                 self._drag_idx = i
                 self._dragging = True
                 return
 
         # New transducer
-        self.transducers.append((round(x, 4), round(y, 4), 1.0, 0.0))
+        self.transducers.append((round(x, 4), round(y, 4), 1.0, 0.0, None))
         self._refresh_trans()
         self.full_update()
 
@@ -793,9 +983,11 @@ class ChladniApp:
             x = float(np.clip(x, -Lx / 2, Lx / 2))
             y = float(np.clip(y, -Ly / 2, Ly / 2))
 
-        _, _, amp, phase = self.transducers[self._drag_idx]
+        t = self.transducers[self._drag_idx]
+        amp, phase = t[2], t[3]
+        tfreq = t[4] if len(t) > 4 else None
         self.transducers[self._drag_idx] = (round(x, 4), round(y, 4),
-                                            amp, phase)
+                                            amp, phase, tfreq)
         self._refresh_trans()
         self._debounced_pattern()
 
@@ -1091,7 +1283,8 @@ class ChladniApp:
                        zorder=2)
 
         # Transducers
-        for i, (tx, ty, amp, phase) in enumerate(self.transducers):
+        for i, t in enumerate(self.transducers):
+            tx, ty, amp, phase = t[0], t[1], t[2], t[3]
             deg = np.degrees(phase)
             if abs(deg) < 10 or abs(deg - 360) < 10:
                 c, mk = "#ff4444", "^"
@@ -1170,10 +1363,10 @@ class ChladniApp:
             dim_str = (f"{Lx*100:.1f}×{Lx*100:.1f} cm, "
                        f"h={h*1000:.1f} mm")
 
-        n_up = sum(1 for _, _, _, ph in self.transducers
-                   if abs(ph) < 0.1 or abs(ph - 2*np.pi) < 0.1)
-        n_dn = sum(1 for _, _, _, ph in self.transducers
-                   if abs(ph - np.pi) < 0.1)
+        n_up = sum(1 for t in self.transducers
+                   if abs(t[3]) < 0.1 or abs(t[3] - 2*np.pi) < 0.1)
+        n_dn = sum(1 for t in self.transducers
+                   if abs(t[3] - np.pi) < 0.1)
         n_other = len(self.transducers) - n_up - n_dn
 
         lines = [
@@ -1217,8 +1410,8 @@ class ChladniApp:
             sign = self.sign_var.get()
             coup = sum(
                 abs(self.physics.transducer_coupling_single(
-                    tx, ty, n, m, Lx, Ly, sign))
-                for tx, ty, _, _ in self.transducers)
+                    t[0], t[1], n, m, Lx, Ly, sign))
+                for t in self.transducers)
             if coup < 0.05:
                 self.warn_lbl.config(
                     text="⚠ Transdutores perto de nós — "
