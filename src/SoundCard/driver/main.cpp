@@ -16,24 +16,24 @@
 const double PI = 3.14159265358979323846;
 const int SAMPLE_RATE = 48000; // Obviusly this can be changed
 const int FRAMES_PER_BUFFER = 256;
-const int NUM_CHANNELS = 8; // Assuming a 7.1 soundcard
-const int NUM_GENERATORS = 8; // One independent generator per physical output channel
 
-// --- 7.1 Channel Layout (standard ALSA/WASAPI order) ---
-// Each generator maps 1:1 to one physical hardware output channel.
-// ch 0: Front L    ch 1: Front R
-// ch 2: Rear  L    ch 3: Rear  R
-// ch 4: Center     ch 5: Subwoofer (LFE)
-// ch 6: Side  L    ch 7: Side  R
+// 7.1 Variant
+//const int NUM_CHANNELS = 8; 
+//const int NUM_GENERATORS = 8; // One independent generator per physical output channel 
+
+// 5.1 Variant
+const int NUM_CHANNELS = 6; 
+const int NUM_GENERATORS = 6; // One independent generator per physical output channel
 
 const char* CH_LABEL[NUM_GENERATORS] = {
     "Front L", "Front R",
-    "Rear  L", "Rear  R",
     "Center ", "Subwoof",
-    "Side  L", "Side  R",
+    "Rear  L", "Rear  R",
+    // "Side L", "Side R", // Waiting for the 7.1 Soundcard
 };
 
 // --- Data Structures ---
+
 struct Generator {
     std::atomic<float> freq{440.0f};
     std::atomic<float> amp{0.0f};
@@ -168,9 +168,9 @@ void runTUI() {
             std::cout << "<id>     Generator ID (one per physical output channel).\n";
             for (int i = 0; i < NUM_GENERATORS; i++)
                 std::cout << "         " << i << " = ch" << i << " [" << CH_LABEL[i] << "]\n";
-            std::cout << "<freq>   Signal's frequency.         \t[20:24000] Hz \n";
-            std::cout << "<amp>    Signal amplitude.           \t[0:1] \n";
-            std::cout << "<phase>  Signal phase.               \t[0:360] º\n";
+            std::cout << "<freq>   Signal's frequency.             \t[20:24000] Hz \n";
+            std::cout << "<amp>    Signal amplitude.               \t[0:1] \n";
+            std::cout << "<phase>  Signal phase.                   \t[0:360] º\n";
         }
     }
 }
@@ -178,7 +178,7 @@ void runTUI() {
 // --- Graphical User Interface (GUI) ---
 void runGUI() {
     if (!glfwInit()) return;
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Multi-Channel Sine Generator", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(900, 800, "Multi-Channel Sine Generator", NULL, NULL);
     if (!window) return;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
@@ -188,7 +188,7 @@ void runGUI() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    ImVec4 clear_color = ImVec4(0.10f, 0.10f, 0.12f, 1.00f);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -197,10 +197,8 @@ void runGUI() {
         ImGui::NewFrame();
 
         ImGui::Begin("Global Controls");
-        
-        // Master Mute
         bool isMuted = masterMute.load();
-        if (isMuted) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
+        if (isMuted) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.1f, 0.1f, 1.0f));
         if (ImGui::Button(isMuted ? "UNMUTE ALL" : "MASTER MUTE", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 40))) {
             masterMute.store(!isMuted);
         }
@@ -208,17 +206,16 @@ void runGUI() {
 
         ImGui::SameLine();
 
-        // --- RESET BUTTON ---
         if (ImGui::Button("RESET ALL", ImVec2(ImGui::GetContentRegionAvail().x, 40))) {
             resetGenerators();
         }
 
         bool hMode = headsetMode.load();
         if (ImGui::Checkbox("Headset Monitoring Mode", &hMode)) headsetMode.store(hMode);
-        
         ImGui::Text("System Latency: %.2f ms", measuredLatency.load());
         ImGui::End();
 
+        
         ImGui::Begin("Sine Wave Generators");
         for (int i = 0; i < NUM_GENERATORS; i++) {
             ImGui::PushID(i);
@@ -229,11 +226,32 @@ void runGUI() {
                 float p = generators[i].phaseDeg.load();
 
                 if (ImGui::SliderFloat("Frequency (Hz)", &f, 20.0f, 24000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) generators[i].freq.store(f);
-                if (ImGui::SliderFloat("Amplitude",      &a, 0.0f,  1.0f,     "%.3f"))                              generators[i].amp.store(a);
-                if (ImGui::SliderFloat("Phase (deg)",    &p, 0.0f,  360.0f,   "%.1f"))                              generators[i].phaseDeg.store(std::fmod(p, 360.0f));
+                if (ImGui::SliderFloat("Amplitude",      &a, 0.0f,  1.0f,     "%.3f"))                               generators[i].amp.store(a);
+                if (ImGui::SliderFloat("Phase (deg)",    &p, 0.0f,  360.0f,   "%.1f"))                               generators[i].phaseDeg.store(std::fmod(p, 360.0f));
+
+                
+
+                // --- Waveform viewer (Snapshot) ---
+                /*
+
+                static float plotSamples[256];
+
+                const float windowDuration = 0.02f;
+                float phaseRad = p * (PI / 180.0f);
+
+                for (int n = 0; n < 256; n++) {
+                    float t = (float)n / 256.0f * windowDuration;
+                    plotSamples[n] = a * std::sin(2.0f * PI * f * t + phaseRad);
+                }
+                ImGui::PlotLines("##Waveform", plotSamples, 256, 0, nullptr, -1.0f, 1.0f, ImVec2(0, 80));
+                ImGui::Spacing();
+                
+                */
             }
+            
             ImGui::PopID();
         }
+        
         ImGui::End();
 
         ImGui::Render();
@@ -244,44 +262,43 @@ void runGUI() {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
-    // Cleanup...
+    
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
 }
 
 // --- Audio Device Selection ---
-//int selectAudioDevice() {
-//    int numDevices = Pa_GetDeviceCount();
-//    std::cout << "\nAvailable audio devices:\n";
-//    for (int i = 0; i < numDevices; i++) {
-//        const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
-//        if (info->maxOutputChannels >= NUM_CHANNELS)
-//            std::cout << "  [" << i << "] " << info->name 
-//                      << " (out: " << info->maxOutputChannels << "ch)\n";
-//    }
-//    std::cout << "Select device index: ";
-//    int choice; std::cin >> choice;
-//    return choice;
-
-// In case of trouble this may solve the problem. Linux tends to order PortAudio to map to virtual audio managers, instead of the actual hardware.
-
-
-//}
+int selectAudioDevice() {
+    int numDevices = Pa_GetDeviceCount();
+    std::cout << "\nAvailable audio devices:\n";
+    for (int i = 0; i < numDevices; i++) {
+        const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
+        if (info->maxOutputChannels >= NUM_CHANNELS)
+            std::cout << "  [" << i << "] " << info->name 
+                      << " (out: " << info->maxOutputChannels << "ch)\n";
+    }
+    std::cout << "Select device index: ";
+    int choice; std::cin >> choice;
+    return choice;
+}
 
 int main() {
     Pa_Initialize();
     PaStream *stream;
-    Pa_OpenDefaultStream(&stream, 0, NUM_CHANNELS, paFloat32, SAMPLE_RATE, FRAMES_PER_BUFFER, audioCallback, nullptr);
     
-    // --- Audio Device Selection ---
-    //int deviceIdx = selectAudioDevice();
-    //const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(deviceIdx);
-    //
-    //PaStreamParameters outputParams;
-    //outputParams.device                    = deviceIdx;
-    //outputParams.channelCount              = NUM_CHANNELS;
-    //outputParams.sampleFormat              = paFloat32;
-    //outputParams.suggestedLatency          = deviceInfo->defaultLowOutputLatency;
-    //outputParams.hostApiSpecificStreamInfo = nullptr;
-    //Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
+    int deviceIdx = selectAudioDevice();
+    const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(deviceIdx);
+    
+    PaStreamParameters outputParams;
+    outputParams.device                    = deviceIdx;
+    outputParams.channelCount              = NUM_CHANNELS;
+    outputParams.sampleFormat              = paFloat32;
+    outputParams.suggestedLatency          = deviceInfo->defaultLowOutputLatency;
+    outputParams.hostApiSpecificStreamInfo = nullptr;
+    Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
 
     Pa_StartStream(stream);
 
@@ -292,6 +309,7 @@ int main() {
     else runTUI();
 
     Pa_StopStream(stream);
+    Pa_CloseStream(stream);
     Pa_Terminate();
     return 0;
 }
