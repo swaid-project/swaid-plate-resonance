@@ -1,0 +1,190 @@
+{
+  "_comment": "Chladni Figure Catalogue — 4 transducer setup (FL, FR, RL, RR). Channel mapping: 1=Front L, 2=Front R, 3=Rear L, 4=Rear R. Frequencies based on Chladni pattern research for square plate geometry.",
+
+  "CHLADNI_CROSS": {
+    "ui_metadata": {
+      "display_name": "Cross",
+      "description": "Simple cross pattern. Two transducers in phase opposition along one axis.",
+      "difficulty": "beginner"
+    },
+    "hardware_config": {
+      "base_volume": 0.85,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 440.0, "phase_deg": 180, "amplitude": 1.0 },
+        { "channel": 3, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 440.0, "phase_deg": 180, "amplitude": 1.0 }
+      ]
+    }
+  },
+
+  "CHLADNI_STAR_4": {
+    "ui_metadata": {
+      "display_name": "Four-Pointed Star",
+      "description": "Four-lobed star. All transducers same frequency, alternating 0/180 phase in quadrature.",
+      "difficulty": "beginner"
+    },
+    "hardware_config": {
+      "base_volume": 0.85,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 440.0, "phase_deg": 180, "amplitude": 1.0 },
+        { "channel": 3, "frequency_hz": 440.0, "phase_deg": 90,  "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 440.0, "phase_deg": 270, "amplitude": 1.0 }
+      ]
+    }
+  },
+
+  "CHLADNI_RING": {
+    "ui_metadata": {
+      "display_name": "Ring / Bullseye",
+      "description": "Circular nodal ring. All transducers in phase, radial symmetry.",
+      "difficulty": "beginner"
+    },
+    "hardware_config": {
+      "base_volume": 0.85,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 880.0, "phase_deg": 0, "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 880.0, "phase_deg": 0, "amplitude": 1.0 },
+        { "channel": 3, "frequency_hz": 880.0, "phase_deg": 0, "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 880.0, "phase_deg": 0, "amplitude": 1.0 }
+      ]
+    }
+  },
+
+  "CHLADNI_DIAGONAL": {
+    "ui_metadata": {
+      "display_name": "Diagonal Lines",
+      "description": "Diagonal nodal lines across the plate. Front and Rear pairs in opposition.",
+      "difficulty": "beginner"
+    },
+    "hardware_config": {
+      "base_volume": 0.85,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 3, "frequency_hz": 440.0, "phase_deg": 180, "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 440.0, "phase_deg": 180, "amplitude": 1.0 }
+      ]
+    }
+  },
+
+  "CHLADNI_GRID_2x2": {
+    "ui_metadata": {
+      "display_name": "2x2 Grid",
+      "description": "Four-cell grid pattern. Two different frequencies create interference grid.",
+      "difficulty": "intermediate"
+    },
+    "hardware_config": {
+      "base_volume": 0.80,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 660.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 3, "frequency_hz": 660.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 }
+      ]
+    }
+  },
+
+  "CHLADNI_STAR_8": {
+    "ui_metadata": {
+      "display_name": "Eight-Pointed Star",
+      "description": "Eight-lobed figure. Uses frequency ratio 1:2 with quadrature phasing.",
+      "difficulty": "intermediate"
+    },
+    "hardware_config": {
+      "base_volume": 0.80,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 880.0, "phase_deg": 0,   "amplitude": 0.8 },
+        { "channel": 3, "frequency_hz": 440.0, "phase_deg": 90,  "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 880.0, "phase_deg": 90,  "amplitude": 0.8 }
+      ]
+    }
+  },
+
+  "CHLADNI_SPIRAL": {
+    "ui_metadata": {
+      "display_name": "Spiral / Lissajous",
+      "description": "Spiral-like Lissajous pattern. Frequency ratio 2:3 creates a 6-node figure.",
+      "difficulty": "intermediate"
+    },
+    "hardware_config": {
+      "base_volume": 0.80,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 440.0, "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 660.0, "phase_deg": 90,  "amplitude": 1.0 },
+        { "channel": 3, "frequency_hz": 440.0, "phase_deg": 180, "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 660.0, "phase_deg": 270, "amplitude": 1.0 }
+      ]
+    }
+  },
+
+  "CHLADNI_FLOWER_6": {
+    "ui_metadata": {
+      "display_name": "Six-Petal Flower",
+      "description": "Six-lobed flower. Frequency ratio 1:3 with alternating phase.",
+      "difficulty": "intermediate"
+    },
+    "hardware_config": {
+      "base_volume": 0.80,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 440.0,  "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 1320.0, "phase_deg": 0,   "amplitude": 0.7 },
+        { "channel": 3, "frequency_hz": 440.0,  "phase_deg": 180, "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 1320.0, "phase_deg": 180, "amplitude": 0.7 }
+      ]
+    }
+  },
+
+  "CHLADNI_BUTTERFLY": {
+    "ui_metadata": {
+      "display_name": "Butterfly",
+      "description": "Asymmetric butterfly. Ratio 3:4, known to produce wing-like nodal lines.",
+      "difficulty": "advanced"
+    },
+    "hardware_config": {
+      "base_volume": 0.75,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 660.0,  "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 880.0,  "phase_deg": 45,  "amplitude": 0.9 },
+        { "channel": 3, "frequency_hz": 660.0,  "phase_deg": 135, "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 880.0,  "phase_deg": 225, "amplitude": 0.9 }
+      ]
+    }
+  },
+
+  "CHLADNI_MANDALA": {
+    "ui_metadata": {
+      "display_name": "Mandala",
+      "description": "Complex mandala with many nodes. High frequency ratio 2:5 with full phase sweep.",
+      "difficulty": "advanced"
+    },
+    "hardware_config": {
+      "base_volume": 0.70,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 440.0,  "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 1100.0, "phase_deg": 72,  "amplitude": 0.8 },
+        { "channel": 3, "frequency_hz": 440.0,  "phase_deg": 144, "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 1100.0, "phase_deg": 216, "amplitude": 0.8 }
+      ]
+    }
+  },
+
+  "CHLADNI_TORUS_KNOT": {
+    "ui_metadata": {
+      "display_name": "Torus Knot",
+      "description": "Knotted interference pattern. Ratio 3:5 with 60-degree phase offsets.",
+      "difficulty": "advanced"
+    },
+    "hardware_config": {
+      "base_volume": 0.70,
+      "transducers": [
+        { "channel": 1, "frequency_hz": 660.0,  "phase_deg": 0,   "amplitude": 1.0 },
+        { "channel": 2, "frequency_hz": 1100.0, "phase_deg": 60,  "amplitude": 0.85 },
+        { "channel": 3, "frequency_hz": 660.0,  "phase_deg": 120, "amplitude": 1.0 },
+        { "channel": 4, "frequency_hz": 1100.0, "phase_deg": 180, "amplitude": 0.85 }
+      ]
+    }
+  }
+}
