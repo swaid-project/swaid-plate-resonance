@@ -19,3 +19,30 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# C/C++ build artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Project build outputs
+src/soundcard/driver/sine_gen
+src/soundcard/driver/test/rcv_app
+src/soundcard/driver/imgui/*.o
+src/soundcard/driver/test/*.o
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
