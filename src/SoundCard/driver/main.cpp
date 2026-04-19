@@ -4,6 +4,8 @@
 #include <atomic> // To avoid data races
 #include <string>
 #include <iomanip> // Used to format latency output
+#include <thread>
+#include <unistd.h>
 
 // --- Third-Party Libraries ---
 #include "imgui.h"
@@ -13,7 +15,7 @@
 #include <portaudio.h> // sudo apt install portaudio19-dev. Audio processing I/O library
 
 // --- IPC communication
-#include "json_driver_interface,h"
+#include "json_driver_interface.h"
 #include <sys/mman.h>
 #include <fcntl.h>
 
@@ -53,24 +55,29 @@ std::vector<Generator> generators(NUM_GENERATORS); // One per physical output ch
 std::atomic<double> measuredLatency{0.0}; // To measure latency
 std::atomic<bool> headsetMode{true}; // true: fold all channels into Front L/R for monitoring, false: Independent HW Mapping
 std::atomic<bool> masterMute{false}; // Safety kill switch
+std::atomic<bool> shmMode{false};
+
 bool guiRunning = false;
 
 
 // --- IPC to JSON extractor communication
+SharedBlock* shm = nullptr;
 uint32_t lastGen = 0; // To compare between the current status and the one being inserted in the shared memory
 
 SharedBlock* attachShm() {
     int fd = shm_open(SHM_NAME, O_RDWR, 0666); // It's guaranteed to exist
     if (fd == -1) { 
-	    cerr << "SHM not found — is the sender running?\n"; 
+	    std::cerr << "SHM not found — is the sender running?\n"; 
 	    return nullptr; 
     }
     
     auto* blk = (SharedBlock*)mmap(nullptr, sizeof(SharedBlock), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
     close(fd);
+    lastGen = blk->generation;
     return blk;
 }
+
 
 // Call this wherever you want to apply a new pattern — e.g. a button in the GUI
 void applyFromShm(SharedBlock* blk) {
@@ -81,6 +88,16 @@ void applyFromShm(SharedBlock* blk) {
         generators[i].phaseDeg.store(blk->transducers[i].phaseDeg);
     }
     sem_post(&blk->mutex);
+}
+
+void pollShm(){
+    if (!shm)
+	shm = attachShm();
+    if (shm && shmMode.load() && shm->generation != lastGen){
+        applyFromShm(shm); // As soon as possible, extract the values from SHM
+	lastGen = shm->generation;
+    }
+
 }
 
 // Helper function to reset all generators
@@ -154,13 +171,22 @@ void runTUI() {
     std::cout << "  'mode <headset|hw>'\n";
     std::cout << "  'mute' / 'unmute'\n";
     std::cout << "  'reset' (Reset all generators to defaults)\n";
+    std::cout << "  'shm <on|off>' (Live IPC mode - receive patterns from json_caller)\n";
     std::cout << "  'status' / 'exit'\n";
     std::cout << "  'help' (Explains all the variables of 'set')";
+
+    std::atomic<bool> tuiRunning{true};
+    std::thread shmPoller([&]() {
+        while (tuiRunning.load()) {
+            pollShm();
+            std::this_thread::sleep_for(std::chrono::milliseconds(20)); // ~50Hz poll
+        }
+    });
 
     std::string cmd;
     while (true) {
         std::cout << "\n[Mute: " << (masterMute.load() ? "ON" : "OFF") 
-                  << " | Latency: " << std::fixed << std::setprecision(2) << measuredLatency.load() << "ms] > ";
+                  << " | Latency: " << std::fixed << std::setprecision(2) << measuredLatency.load() << "ms] > " << " | SHM: " << (shmMode.load() ? "ON" : "OFF") << "] > "; 
         
         if (!(std::cin >> cmd)) break;
         
@@ -176,6 +202,16 @@ void runTUI() {
             if (m == "headset") headsetMode.store(true);
             else if (m == "hw") headsetMode.store(false);
             std::cout << "Mode updated.\n";
+        }
+	else if (cmd == "shm") {
+            std::string m; std::cin >> m;
+            if (m == "on") {
+                if (!shm) std::cerr << "SHM not attached — start json_caller first.\n";
+                else { shmMode.store(true);  std::cout << "Live IPC mode ON.\n"; }
+            } else if (m == "off") {
+                shmMode.store(false);
+                std::cout << "Live IPC mode OFF.\n";
+            }
         }
         else if (cmd == "status") {
             for (int i = 0; i < NUM_GENERATORS; i++) {
@@ -206,6 +242,8 @@ void runTUI() {
             std::cout << "<phase>  Signal phase.                   \t[0:360] º\n";
         }
     }
+    tuiRunning.store(false);
+    shmPoller.join();
 }
 
 // --- Graphical User Interface (GUI) ---
@@ -225,6 +263,7 @@ void runGUI() {
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        pollShm();
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -245,8 +284,23 @@ void runGUI() {
 
         bool hMode = headsetMode.load();
         if (ImGui::Checkbox("Headset Monitoring Mode", &hMode)) headsetMode.store(hMode);
+
+	bool sMode = shmMode.load();
+        if (ImGui::Checkbox("Live IPC Mode (receive from json_caller)", &sMode)) {
+            if (sMode && !shm)
+	            shm = attachShm();
+            if (sMode && !shm)
+                ImGui::SetTooltip("SHM not attached — start json_caller first.");
+            else
+                shmMode.store(sMode);
+        }
+        if (shmMode.load()) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "LIVE");
+        }
         ImGui::Text("System Latency: %.2f ms", measuredLatency.load());
         ImGui::End();
+
 
         
         ImGui::Begin("Sine Wave Generators");
@@ -334,6 +388,10 @@ int main() {
     Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
 
     Pa_StartStream(stream);
+    
+    shm = attachShm();
+    if (!shm) 
+        std::cout << "SHM not available yet — start json_caller before enabling Live IPC.\n";
 
     std::cout << "Select Mode:\n[1] GUI\n[2] TUI\nChoice: ";
     int choice; std::cin >> choice;
@@ -344,5 +402,11 @@ int main() {
     Pa_StopStream(stream);
     Pa_CloseStream(stream);
     Pa_Terminate();
+
+    if (shm){
+        munmap(shm, sizeof(SharedBlock));
+        shm_unlink(SHM_NAME);
+    }
+
     return 0;
 }

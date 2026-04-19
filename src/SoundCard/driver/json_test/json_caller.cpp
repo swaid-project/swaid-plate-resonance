@@ -11,6 +11,7 @@
 // -- Used to the IPC (shared memory) between this JSON extractor and exporter and the SoundGenerator driver
 #include "json_driver_interface.h"
 #include "sys/mman.h"
+#include "sys/stat.h"
 #include <fcntl.h>
 #include <unistd.h> 
 
@@ -28,13 +29,22 @@ struct Export_Data{
 // -- IPC shared memory 
 
 SharedBlock* openShm() {
+    bool firstTime = false;
     int fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    
+    struct stat st;
+    fstat(fd,&st);
+    firstTime = (st.st_size == 0);
+
     ftruncate (fd, sizeof(SharedBlock)); // To change the size of the opened shared memory
     auto* blk = (SharedBlock*)mmap(nullptr, sizeof(SharedBlock), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0); // To manipulate the opened shared memory
     close(fd);
 
-    sem_init(&blk->mutex,1,1) // Works across processes
-    blk->generation = 0;
+    if (firstTime) {
+	sem_init(&blk->mutex,1,1); // Works across processes
+	blk->generation = 0;
+    }
+
     return blk;
 }
 
@@ -47,6 +57,7 @@ void writeToShm(SharedBlock* blk, const array<Export_Data, 4>& transducers) {
     }
     blk->generation++;
     sem_post(&blk->mutex);
+}
 
 // -- JSON navigating and mapping
 map <string, Json::Value> loadCatalogue(const string& file) {
@@ -139,15 +150,15 @@ array <Export_Data,4> jsonSearch(const map <string, Json::Value>& catalogue, str
 
 int main () {
 
-    auto* shm = openShm()
+    auto* shm = openShm();
 
-    auto catalogue = loadCatalogue("catalogue.json"); // It loads the catalogue containing all info from the possible symbols to the program's memory
-    auto [symbol,transition_time] = jsonExtractor("trigger_test.json"); // Fetchs the SymbolID from the sent JSON message
+    auto catalogue = loadCatalogue("json_test/catalogue.json"); // It loads the catalogue containing all info from the possible symbols to the program's memory
+    auto [symbol,transition_time] = jsonExtractor("json_test/trigger_test.json"); // Fetchs the SymbolID from the sent JSON message
     array <Export_Data,4> transducers = jsonSearch(catalogue,symbol); // Stores in a 4-sized all transducers needed values to export to the driver
     
     writeToShm(shm, transducers);
-    munmap(shm,sizeof(SharedBlock);) // Deletes the address range specified
-    shm_unlink(SHM_NAME); // Cleaning up
+    munmap(shm,sizeof(SharedBlock)); // Deletes the address range specified
+    //shm_unlink(SHM_NAME); // Cleaning up
 
     return 0;
 }
