@@ -16,17 +16,18 @@
 
 // --- JSON related
 #include <map>          
-#include <array>      
 #include <sys/inotify.h>
 #include <jsoncpp/json/json.h>
 #include <fstream>
+#include <sstream>
 
-const char* CATALOGUE_PATH    = "json_files/catalogue.json";   // no leading slash
-const char* TRIGGER_FILE_PATH = "json_files/trigger_test.json";
+const char* CATALOGUE_PATH = "json_files/catalogue.json";   // no leading slash
+const char* ZMQ_ENDPOINT   = "ipc:///tmp/swaid.sock";
 
-// --- IPC communication
-#include <sys/mman.h>
-#include <fcntl.h>
+// --- ZeroMQ communication
+#include <chrono>
+#include <limits>
+#include <zmq.hpp>
 
 // --- Constants ---
 const double PI = 3.14159265358979323846;
@@ -96,19 +97,23 @@ std::map<std::string, Json::Value> loadCatalogue(const std::string& file) {
     return catalogue;
 }
 
-std::string jsonExtractor(const std::string& file) {
-    std::ifstream f(file, std::ifstream::binary);
-
-    if (!f.is_open()) { 
-        std::cerr << "Could not open trigger: " << file << "\n"; 
-        return {}; 
-    }
+std::string jsonExtractor(const std::string& payload) {
 
     Json::Value message;
-    f >> message;
+    Json::CharReaderBuilder builder;
+
+    std::string errs;
+    std::istringstream iss(payload);
+
+    if (!Json::parseFromStream(builder, iss, &message, &errs)) {
+        std::cerr << "JSON parse error: " << errs << "\n";
+        return {};
+    }
+
     
     if (message["message_type"] == "trigger")
         return message["command"]["symbol_id"].asString();
+
     std::cerr << "No valid trigger message.\n";
     return {};
 }
@@ -122,7 +127,6 @@ void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std
     }
 
     const Json::Value& pattern = it->second;
-    std::cout << "Applying: " << symbol_id << "\n";
  
     for (const auto& t : pattern["hardware_config"]["transducers"]) {
         int idx = t["channel"].asInt() - 1;
@@ -140,47 +144,48 @@ void jsonListenerThread() {
     auto catalogue = loadCatalogue(CATALOGUE_PATH);
 
     if (catalogue.empty()) {
-        std::cerr << "Catalogue empty — JSON listener exiting.\n";
+        std::cerr << "Catalogue empty — ZeroMQ listener exiting.\n";
         return;
     }
  
-    int ifd = inotify_init(); // To detect filesystem changes
-    int wd  = inotify_add_watch(ifd, "json_files", IN_CLOSE_WRITE | IN_MODIFY);
+    zmq::context_t context(1);
+	zmq::socket_t pull_socket(context, zmq::socket_type::pull);
+	pull_socket.set(zmq::sockopt::rcvhwm, 100);
+	pull_socket.set(zmq::sockopt::rcvtimeo, 200);
 
-    if (wd == -1) {
-        std::cerr << "inotify failed — check trigger file path.\n";
-        close(ifd);
-        return;
-    }
+    const std::string endpoint(ZMQ_ENDPOINT);
 
-    std::cout << "JSON listener ready — watching " << TRIGGER_FILE_PATH << "\n";
- 
-    char buf[sizeof(inotify_event) + 256];
+	if (endpoint.rfind("ipc://", 0) == 0) {
+		std::string ipcPath = endpoint.substr(6);
+		if (!ipcPath.empty()) {
+			unlink(ipcPath.c_str());
+		}
+	}
 
-    while (jsonLive.load()) {
-        ssize_t len = read(ifd, buf, sizeof(buf));
+    try {
+		pull_socket.bind(endpoint);
+	} catch (const zmq::error_t& e) {
+		std::cerr << "ZeroMQ bind failed at " << endpoint << ": " << e.what() << "\n";
+		return;
+	}
 
-        if (len <= 0 || !jsonLive.load()) 
-            break;
+	std::cout << "ZeroMQ listener ready - listening on " << endpoint << "\n";
 
-        inotify_event* event = (inotify_event*)buf;
+	while (jsonLive.load()) {
+		zmq::message_t msg;
+		auto result = pull_socket.recv(msg, zmq::recv_flags::none);
+		if (!result) {
+			continue;
+		}
 
-        if (event->len == 0 || std::string(event->name) != "trigger_test.json") 
-            continue;
+		std::string payload(static_cast<char*>(msg.data()), msg.size());
+		std::string symbol = jsonExtractor(payload);
+        std::cout << "Parsed symbol: " << symbol << "\n";
+		if (!symbol.empty()) {
+			applyPattern(catalogue, symbol);
+		}
+	}
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
- 
-        try {
-            std::string symbol = jsonExtractor(TRIGGER_FILE_PATH);
-            if (!symbol.empty())
-                applyPattern(catalogue, symbol);
-        } catch (const std::exception& e) {
-            std::cerr << "JSON parse error: " << e.what() << " — skipping.\n";
-        }
-    }
- 
-    inotify_rm_watch(ifd, wd);
-    close(ifd);
 }
 
 // Helper function to reset all generators
@@ -200,6 +205,7 @@ static int audioCallback(const void *inputBuffer, void *outputBuffer,
                          PaStreamCallbackFlags statusFlags,
                          void *userData) {
 
+
     measuredLatency.store((timeInfo->outputBufferDacTime - timeInfo->currentTime) * 1000.0); // Multiplied by 1000 to obtain the result in ms
 
     float *out = (float*)outputBuffer;
@@ -208,7 +214,8 @@ static int audioCallback(const void *inputBuffer, void *outputBuffer,
     for (unsigned int i = 0; i < framesPerBuffer; i++) {
         for (int ch = 0; ch < NUM_CHANNELS; ch++) out[i * NUM_CHANNELS + ch] = 0.0f;
 
-        if (masterMute.load()) continue;
+        if (masterMute.load()) 
+            continue;
 
         bool hMode = headsetMode.load();
         float monitorL = 0.0f;
@@ -224,14 +231,18 @@ static int audioCallback(const void *inputBuffer, void *outputBuffer,
 
             double phaseIncrement = (2.0 * PI * f) / SAMPLE_RATE;
             gen.currentBasePhase += phaseIncrement;
-            if (gen.currentBasePhase >= 2.0 * PI) gen.currentBasePhase -= 2.0 * PI;
+
+            if (gen.currentBasePhase >= 2.0 * PI) 
+                gen.currentBasePhase -= 2.0 * PI;
 
             float sample = a * std::sin(gen.currentBasePhase + p);
 
             if (hMode) {
                 // Fold into Front L/R for headset monitoring: even-indexed channels go L, odd go R
-                if (genIdx % 2 == 0) monitorL += sample;
-                else                 monitorR += sample;
+                if (genIdx % 2 == 0) 
+                    monitorL += sample;
+                else                 
+                    monitorR += sample;
             } else {
                 // Each generator drives its own physical output channel directly
                 out[i * NUM_CHANNELS + genIdx] = sample;
@@ -254,43 +265,52 @@ void runTUI() {
     std::cout << "  'mode <headset|hw>'\n";
     std::cout << "  'mute' / 'unmute'\n";
     std::cout << "  'reset' (Reset all generators to defaults)\n";
-    std::cout << "  'json <on|off>'  (live JSON listener)\n";
+    std::cout << "  'json <on|off>'  (live ZeroMQ listener)\n";
     std::cout << "  'status' / 'exit'\n";
     std::cout << "  'help' (Explains all the variables of 'set')";
 
     std::thread listener;
-
-    std::atomic<bool> tuiRunning{true};
-
     std::string cmd;
+
     while (true) {
         std::cout << "\n[Mute: " << (masterMute.load() ? "ON" : "OFF") 
-                  << " | Latency: " << std::fixed << std::setprecision(2) << measuredLatency.load() << "ms] > " << " | JSON: " << (jsonLive.load() ? "LIVE" : "OFF") << "] > "; 
+                  << " | Latency: " << std::fixed << std::setprecision(2) << measuredLatency.load() << "ms] > " << " | ZeroMQ: " << (jsonLive.load() ? "LIVE" : "OFF") << "] > "; 
         
-        if (!(std::cin >> cmd)) break;
+        if (!(std::cin >> cmd)) 
+            break;
         
-        if (cmd == "exit") break;
-        else if (cmd == "mute") masterMute.store(true);
-        else if (cmd == "unmute") masterMute.store(false);
+        if (cmd == "exit") 
+            break;
+        else if (cmd == "mute") 
+            masterMute.store(true);
+        else if (cmd == "unmute") 
+            masterMute.store(false);
         else if (cmd == "reset") {
             resetGenerators();
             std::cout << "All generators reset to default values.\n";
         }
         else if (cmd == "mode") {
             std::string m; std::cin >> m;
-            if (m == "headset") headsetMode.store(true);
-            else if (m == "hw") headsetMode.store(false);
+
+            if (m == "headset") 
+                headsetMode.store(true);
+            else if (m == "hw") 
+                headsetMode.store(false);
+
             std::cout << "Mode updated.\n";
         }
 	    else if (cmd == "json") {
-            std::string m; std::cin >> m;
+            std::string m; 
+            std::cin >> m;
             if (m == "on" && !jsonLive.load()) {
                 jsonLive.store(true);
                 listener = std::thread(jsonListenerThread);
                 std::cout << "JSON listener ON.\n";
             } else if (m == "off" && jsonLive.load()) {
                 jsonLive.store(false);
-                if (listener.joinable()) listener.join();
+                if (listener.joinable()) 
+                    listener.join();
+
                 std::cout << "JSON listener OFF.\n";
             }
         }
@@ -310,14 +330,17 @@ void runTUI() {
                 generators[id].phaseDeg.store(p);
             } else {
                 std::cout << "Invalid input.\n";
-                std::cin.clear(); std::cin.ignore(10000, '\n');
+                std::cin.clear(); 
+                std::cin.ignore(10000, '\n');
             }
         }
         else if (cmd == "help") {
             std::cout << "The following variables can be manipulated via 'set ...': \n";
             std::cout << "<id>     Generator ID (one per physical output channel).\n";
+
             for (int i = 0; i < NUM_GENERATORS; i++)
                 std::cout << "         " << i << " = ch" << i << " [" << CH_LABEL[i] << "]\n";
+
             std::cout << "<freq>   Signal's frequency.             \t[20:24000] Hz \n";
             std::cout << "<amp>    Signal amplitude.               \t[0:1] \n";
             std::cout << "<phase>  Signal phase.                   \t[0:360] º\n";
@@ -326,15 +349,21 @@ void runTUI() {
 
     if (jsonLive.load()) {
         jsonLive.store(false);
-        if (listener.joinable()) listener.join();
+        if (listener.joinable()) 
+            listener.join();
     }
 }
 
 // --- Graphical User Interface (GUI) ---
 void runGUI() {
-    if (!glfwInit()) return;
+
+    if (!glfwInit()) 
+        return;
     GLFWwindow* window = glfwCreateWindow(900, 800, "Multi-Channel Sine Generator", NULL, NULL);
-    if (!window) return;
+    
+    if (!window) 
+        return;
+
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
@@ -354,11 +383,15 @@ void runGUI() {
 
         ImGui::Begin("Global Controls");
         bool isMuted = masterMute.load();
-        if (isMuted) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.1f, 0.1f, 1.0f));
+        if (isMuted) 
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.1f, 0.1f, 1.0f));
+
         if (ImGui::Button(isMuted ? "UNMUTE ALL" : "MASTER MUTE", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 40))) {
             masterMute.store(!isMuted);
         }
-        if (isMuted) ImGui::PopStyleColor();
+
+        if (isMuted) 
+            ImGui::PopStyleColor();
 
         ImGui::SameLine();
 
@@ -367,16 +400,20 @@ void runGUI() {
         }
 
         bool hMode = headsetMode.load();
-        if (ImGui::Checkbox("Headset Monitoring Mode", &hMode)) headsetMode.store(hMode);
+
+        if (ImGui::Checkbox("Headset Monitoring Mode", &hMode)) 
+            headsetMode.store(hMode);
 
 	    bool jLive = jsonLive.load();
+
         if (ImGui::Checkbox("Live JSON Mode (watch trigger file)", &jLive)) {
             if (jLive && !jsonLive.load()) {
                 jsonLive.store(true);
                 listener = std::thread(jsonListenerThread);
             } else if (!jLive && jsonLive.load()) {
                 jsonLive.store(false);
-                if (listener.joinable()) listener.join();
+                if (listener.joinable()) 
+                    listener.join();
             }
         }
         if (jsonLive.load()) {
@@ -387,8 +424,6 @@ void runGUI() {
         ImGui::Text("System Latency: %.2f ms", measuredLatency.load());
         ImGui::End();
 
-
-        
         ImGui::Begin("Sine Wave Generators");
         for (int i = 0; i < NUM_GENERATORS; i++) {
             ImGui::PushID(i);
@@ -398,9 +433,12 @@ void runGUI() {
                 float a = generators[i].amp.load();
                 float p = generators[i].phaseDeg.load();
 
-                if (ImGui::SliderFloat("Frequency (Hz)", &f, 20.0f, 24000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) generators[i].freq.store(f);
-                if (ImGui::SliderFloat("Amplitude",      &a, 0.0f,  1.0f,     "%.3f"))                               generators[i].amp.store(a);
-                if (ImGui::SliderFloat("Phase (deg)",    &p, 0.0f,  360.0f,   "%.1f"))                               generators[i].phaseDeg.store(std::fmod(p, 360.0f));
+                if (ImGui::SliderFloat("Frequency (Hz)", &f, 20.0f, 24000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) 
+                    generators[i].freq.store(f);
+                if (ImGui::SliderFloat("Amplitude",      &a, 0.0f,  1.0f,     "%.3f"))  
+                    generators[i].amp.store(a);
+                if (ImGui::SliderFloat("Phase (deg)",    &p, 0.0f,  360.0f,   "%.1f"))                               
+                    generators[i].phaseDeg.store(std::fmod(p, 360.0f));
             }
             
             ImGui::PopID();

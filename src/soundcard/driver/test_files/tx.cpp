@@ -71,7 +71,7 @@ extern "C" {
             "        \"symbol_id\": \"%s\",\n"
             "        \"led_id\" : \"%s\",\n"
             "        \"transition_time_ms\" : \"%s\",\n"
-            "        \"volument_percent\": %.1f\n"
+            "        \"volume_percent\": %.1f\n"
             "    }\n"
             "}",
             timestamp, symbol_id, led_id, transition_time, volume_percent
