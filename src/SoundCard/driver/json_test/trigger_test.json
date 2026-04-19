@@ -2,7 +2,7 @@
 	"message_type": "trigger",
 	"timestamp" : 1712587844123,
 	"command" : {
-		"symbol_id": "CHLADNI_STAR_4",
+		"symbol_id": "CHLADNI_SPIRAL",
 		"led_id" : "PULSE_BLUE",
 		"transition_time_ms" : "HIGH", 
 		"volument_percent": 85.0

@@ -5,89 +5,150 @@
 #include <jsoncpp/json/json.h>
 #include <fstream>
 #include <iostream>
+#include <atomic>
+#include <map>
+
+// -- Used to the IPC (shared memory) between this JSON extractor and exporter and the SoundGenerator driver
+#include "json_driver_interface.h"
+#include "sys/mman.h"
+#include <fcntl.h>
+#include <unistd.h> 
+
 using namespace std;
 
 struct Export_Data{
-    std::atomic<float> freq;
-    std::atomic<float> amp;
-    std::atomic<float> phaseDeg;
+    float freq;
+    float amp;
+    float phaseDeg;
 
     // Internal state (Audio thread only)
     double currentBasePhase = 0.0;
 };
 
-pair <string, string> json_extracter(string file){
-    std::ifstream message_file(file, std::ifstream::binary);
+// -- IPC shared memory 
+
+SharedBlock* openShm() {
+    int fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    ftruncate (fd, sizeof(SharedBlock)); // To change the size of the opened shared memory
+    auto* blk = (SharedBlock*)mmap(nullptr, sizeof(SharedBlock), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0); // To manipulate the opened shared memory
+    close(fd);
+
+    sem_init(&blk->mutex,1,1) // Works across processes
+    blk->generation = 0;
+    return blk;
+}
+
+void writeToShm(SharedBlock* blk, const array<Export_Data, 4>& transducers) {
+    sem_wait(&blk->mutex);
+    for (int i = 0; i < 4; i++) {
+        blk->transducers[i].freq     = transducers[i].freq;
+        blk->transducers[i].amp      = transducers[i].amp;
+        blk->transducers[i].phaseDeg = transducers[i].phaseDeg;
+    }
+    blk->generation++;
+    sem_post(&blk->mutex);
+
+// -- JSON navigating and mapping
+map <string, Json::Value> loadCatalogue(const string& file) {
+
+    ifstream message_file(file, ifstream::binary);
+
+    if (!message_file.is_open()) {
+        cerr << "Could not open catalogue.\n";
+        return {};
+    }
+
+    Json::Value root;
+    message_file >> root;
+
+    map <string, Json::Value> catalogue;
+
+    for (const auto& key : root.getMemberNames()) // to go through the indexes
+        catalogue[key] = root[key];
+
+    return catalogue;
+}
+
+pair <string, string> jsonExtractor(const string& file){
+    
+    ifstream message_file(file, ifstream::binary);
+
+    if (!message_file.is_open()) {
+        cerr << "Could not open catalogue.\n";
+        return {};
+    }
+
     Json::Value message;
     message_file >> message;
 
     string symbol, transition_time;
 
 
-        cout << message << "\n" ; //This will print the entire json object.
-				  //
-        //The following lines will let you access the indexed objects.
-        cout << message["message_type"] << "\n"; 
-        cout << message["timestamp"] << "\n"; 
+        // cout << message << "\n" ; //This will print the entire json object.
 
     if (message["message_type"] == "trigger") {
-
-        cout << message["command"]["symbol_id"] << "\n"; 
-        cout << message["command"]["led_id"] << "\n"; 
-        cout << message["command"]["transition_time_ms"] << "\n"; 
-        cout << message["command"]["volume_percent"] << "\n"; 
-
-        cout << message["sound"] << "\n"; //NULL! There is no element with key "profession". Hence a new empty element will be created.
-
+        
         symbol = message["command"]["symbol_id"].asString();
         transition_time = message["command"]["transition_time_ms"].asString();
+        return {symbol,transition_time};
 
 
-    } else if (message["message_type"] ==  "config_update") {
-
-        cout << message["activate_catalog"] << "\n"; 
-
-        cout << message["sound"] << "\n"; //NULL! There is no element with key "profession". Hence a new empty element will be created.
-	
-
-    } else {
-        cout << "There is no valid message" << "\n";
+    }  else {
+        cerr << "There is no valid message \n";
+	return {};
     }
 
-   return {symbol,transition_time};
 }
 
-int json_search(string file, string symbol_id){
-    std::ifstream message_file(file, std::ifstream::binary);
-    Json::Value catalogue;
-    message_file >> catalogue;
 
-    Export_Data channel[4];
+array <Export_Data,4> jsonSearch(const map <string, Json::Value>& catalogue, string const& symbol_id){
 
+    auto it = catalogue.find(symbol_id);
 
-    if (!catalogue.isMember(symbol_id)) {
+    if (it == catalogue.end()) {
         std::cerr << "Pattern '" << symbol_id << "' not found.\n";
-        return Json::nullValue;
+        return {};
     }
 
-    cout << "Found it!" << "\n";
+    const Json::Value& pattern = it->second; 
+
+    array <Export_Data,4> transducers {};
+
+    cout << "Found it!" << "\n" ;
+
+    for (const auto& t : pattern["hardware_config"]["transducers"]){
+	int idx = t["channel"].asInt() - 1; 
+
+        transducers[idx].freq =  t["frequency_hz" ].asFloat();
+        transducers[idx].amp  =  t["amplitude" ].asFloat();
+        transducers[idx].phaseDeg = t["phase_deg" ].asFloat();
+    }
 
     for (int i = 0; i < 4; i++){
-        channel[i].freq.store(catalogue[symbol_id]["hardware_config"]["tranduscers"]);
-        channel[i].amp.store(catalogue[symbol_id]["hardware_config"]["tranduscers"]);
-        channel[i].phaseDeg.store(catalogue[symbol_id]["hardware_config"]["tranduscers"]);
+	cout << "======================= Channel "<< i << " =======================\n";
+	cout << "Frequency of the channel: " << transducers[i].freq << "\n";
+	cout << "Amplitude of the channel: " << transducers[i].amp<< "\n";
+	cout << "Phase of the channel    : " << transducers[i].phaseDeg << "\n";
     }
 
 
-    return 0;
+
+    return transducers;
 }
+
 
 int main () {
 
+    auto* shm = openShm()
 
-	auto [symbol,transition_time] = json_extracter("trigger_test.json");
-    json_extracter("config_test.json");
-    json_search("catalogue.json",symbol);
-	return 0;
+    auto catalogue = loadCatalogue("catalogue.json"); // It loads the catalogue containing all info from the possible symbols to the program's memory
+    auto [symbol,transition_time] = jsonExtractor("trigger_test.json"); // Fetchs the SymbolID from the sent JSON message
+    array <Export_Data,4> transducers = jsonSearch(catalogue,symbol); // Stores in a 4-sized all transducers needed values to export to the driver
+    
+    writeToShm(shm, transducers);
+    munmap(shm,sizeof(SharedBlock);) // Deletes the address range specified
+    shm_unlink(SHM_NAME); // Cleaning up
+
+    return 0;
 }
 

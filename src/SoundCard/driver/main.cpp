@@ -12,6 +12,11 @@
 #include <GLFW/glfw3.h> // sudo apt install libglfw3-dev. Library for OpenGL
 #include <portaudio.h> // sudo apt install portaudio19-dev. Audio processing I/O library
 
+// --- IPC communication
+#include "json_driver_interface,h"
+#include <sys/mman.h>
+#include <fcntl.h>
+
 // --- Constants ---
 const double PI = 3.14159265358979323846;
 const int SAMPLE_RATE = 48000; // Obviusly this can be changed
@@ -49,6 +54,34 @@ std::atomic<double> measuredLatency{0.0}; // To measure latency
 std::atomic<bool> headsetMode{true}; // true: fold all channels into Front L/R for monitoring, false: Independent HW Mapping
 std::atomic<bool> masterMute{false}; // Safety kill switch
 bool guiRunning = false;
+
+
+// --- IPC to JSON extractor communication
+uint32_t lastGen = 0; // To compare between the current status and the one being inserted in the shared memory
+
+SharedBlock* attachShm() {
+    int fd = shm_open(SHM_NAME, O_RDWR, 0666); // It's guaranteed to exist
+    if (fd == -1) { 
+	    cerr << "SHM not found — is the sender running?\n"; 
+	    return nullptr; 
+    }
+    
+    auto* blk = (SharedBlock*)mmap(nullptr, sizeof(SharedBlock), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+    close(fd);
+    return blk;
+}
+
+// Call this wherever you want to apply a new pattern — e.g. a button in the GUI
+void applyFromShm(SharedBlock* blk) {
+    sem_wait(&blk->mutex);
+    for (int i = 0; i < NUM_TRANSDUCERS; i++) {
+        generators[i].freq.store(    blk->transducers[i].freq);
+        generators[i].amp.store(     blk->transducers[i].amp);
+        generators[i].phaseDeg.store(blk->transducers[i].phaseDeg);
+    }
+    sem_post(&blk->mutex);
+}
 
 // Helper function to reset all generators
 void resetGenerators() {
