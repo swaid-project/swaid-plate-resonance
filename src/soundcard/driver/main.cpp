@@ -14,8 +14,17 @@
 #include <GLFW/glfw3.h> // sudo apt install libglfw3-dev. Library for OpenGL
 #include <portaudio.h> // sudo apt install portaudio19-dev. Audio processing I/O library
 
+// --- JSON related
+#include <map>          
+#include <array>      
+#include <sys/inotify.h>
+#include <jsoncpp/json/json.h>
+#include <fstream>
+
+const char* CATALOGUE_PATH    = "json_files/catalogue.json";   // no leading slash
+const char* TRIGGER_FILE_PATH = "json_files/trigger_test.json";
+
 // --- IPC communication
-#include "json_driver_interface.h"
 #include <sys/mman.h>
 #include <fcntl.h>
 
@@ -31,12 +40,19 @@ const int FRAMES_PER_BUFFER = 256;
 // 5.1 Variant
 const int NUM_CHANNELS = 6; 
 const int NUM_GENERATORS = 6; // One independent generator per physical output channel
+const int NUM_TRANSDUCERS = 4;
 
 const char* CH_LABEL[NUM_GENERATORS] = {
     "Front L", "Front R",
     "Center ", "Subwoof",
     "Rear  L", "Rear  R",
     // "Side L", "Side R", // Waiting for the 7.1 Soundcard
+};
+
+struct TransducerData {
+    float freq     = 440.0f;
+    float amp      = 0.0f;
+    float phaseDeg = 0.0f;
 };
 
 // --- Data Structures ---
@@ -55,49 +71,116 @@ std::vector<Generator> generators(NUM_GENERATORS); // One per physical output ch
 std::atomic<double> measuredLatency{0.0}; // To measure latency
 std::atomic<bool> headsetMode{true}; // true: fold all channels into Front L/R for monitoring, false: Independent HW Mapping
 std::atomic<bool> masterMute{false}; // Safety kill switch
-std::atomic<bool> shmMode{false};
+std::atomic<bool> jsonLive{false};
 
 bool guiRunning = false;
 
+// --- JSON functions
 
-// --- IPC to JSON extractor communication
-SharedBlock* shm = nullptr;
-uint32_t lastGen = 0; // To compare between the current status and the one being inserted in the shared memory
+std::map<std::string, Json::Value> loadCatalogue(const std::string& file) {
 
-SharedBlock* attachShm() {
-    int fd = shm_open(SHM_NAME, O_RDWR, 0666); // It's guaranteed to exist
-    if (fd == -1) { 
-	    std::cerr << "SHM not found — is the sender running?\n"; 
-	    return nullptr; 
+    std::ifstream f(file, std::ifstream::binary);
+
+    if (!f.is_open()) { 
+        std::cerr << "Could not open catalogue: " << file << "\n"; 
+        return {}; 
     }
+
+    Json::Value root;
+    f >> root;
+
+    std::map<std::string, Json::Value> catalogue;
+
+    for (const auto& key : root.getMemberNames())
+        catalogue[key] = root[key];
+    return catalogue;
+}
+
+std::string jsonExtractor(const std::string& file) {
+    std::ifstream f(file, std::ifstream::binary);
+
+    if (!f.is_open()) { 
+        std::cerr << "Could not open trigger: " << file << "\n"; 
+        return {}; 
+    }
+
+    Json::Value message;
+    f >> message;
     
-    auto* blk = (SharedBlock*)mmap(nullptr, sizeof(SharedBlock), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-
-    close(fd);
-    lastGen = blk->generation;
-    return blk;
+    if (message["message_type"] == "trigger")
+        return message["command"]["symbol_id"].asString();
+    std::cerr << "No valid trigger message.\n";
+    return {};
 }
 
+void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std::string& symbol_id) {
+    auto it = catalogue.find(symbol_id);
 
-// Call this wherever you want to apply a new pattern — e.g. a button in the GUI
-void applyFromShm(SharedBlock* blk) {
-    sem_wait(&blk->mutex);
-    for (int i = 0; i < NUM_TRANSDUCERS; i++) {
-        generators[i].freq.store(    blk->transducers[i].freq);
-        generators[i].amp.store(     blk->transducers[i].amp);
-        generators[i].phaseDeg.store(blk->transducers[i].phaseDeg);
+    if (it == catalogue.end()) {
+        std::cerr << "Pattern '" << symbol_id << "' not found.\n";
+        return;
     }
-    sem_post(&blk->mutex);
+
+    const Json::Value& pattern = it->second;
+    std::cout << "Applying: " << symbol_id << "\n";
+ 
+    for (const auto& t : pattern["hardware_config"]["transducers"]) {
+        int idx = t["channel"].asInt() - 1;
+
+        if (idx < 0 || idx >= NUM_GENERATORS) 
+            continue;
+
+        generators[idx].freq.store(    t["frequency_hz"].asFloat());
+        generators[idx].amp.store(     t["amplitude"].asFloat());
+        generators[idx].phaseDeg.store(t["phase_deg"].asFloat());
+    }
 }
 
-void pollShm(){
-    if (!shm)
-	shm = attachShm();
-    if (shm && shmMode.load() && shm->generation != lastGen){
-        applyFromShm(shm); // As soon as possible, extract the values from SHM
-	lastGen = shm->generation;
+void jsonListenerThread() {
+    auto catalogue = loadCatalogue(CATALOGUE_PATH);
+
+    if (catalogue.empty()) {
+        std::cerr << "Catalogue empty — JSON listener exiting.\n";
+        return;
+    }
+ 
+    int ifd = inotify_init(); // To detect filesystem changes
+    int wd  = inotify_add_watch(ifd, "json_files", IN_CLOSE_WRITE | IN_MODIFY);
+
+    if (wd == -1) {
+        std::cerr << "inotify failed — check trigger file path.\n";
+        close(ifd);
+        return;
     }
 
+    std::cout << "JSON listener ready — watching " << TRIGGER_FILE_PATH << "\n";
+ 
+    char buf[sizeof(inotify_event) + 256];
+
+    while (jsonLive.load()) {
+        ssize_t len = read(ifd, buf, sizeof(buf));
+
+        if (len <= 0 || !jsonLive.load()) 
+            break;
+
+        inotify_event* event = (inotify_event*)buf;
+
+        if (event->len == 0 || std::string(event->name) != "trigger_test.json") 
+            continue;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+ 
+        try {
+            std::string symbol = jsonExtractor(TRIGGER_FILE_PATH);
+            if (!symbol.empty())
+                applyPattern(catalogue, symbol);
+        } catch (const std::exception& e) {
+            std::cerr << "JSON parse error: " << e.what() << " — skipping.\n";
+        }
+    }
+ 
+    inotify_rm_watch(ifd, wd);
+    close(ifd);
 }
 
 // Helper function to reset all generators
@@ -171,22 +254,18 @@ void runTUI() {
     std::cout << "  'mode <headset|hw>'\n";
     std::cout << "  'mute' / 'unmute'\n";
     std::cout << "  'reset' (Reset all generators to defaults)\n";
-    std::cout << "  'shm <on|off>' (Live IPC mode - receive patterns from json_caller)\n";
+    std::cout << "  'json <on|off>'  (live JSON listener)\n";
     std::cout << "  'status' / 'exit'\n";
     std::cout << "  'help' (Explains all the variables of 'set')";
 
+    std::thread listener;
+
     std::atomic<bool> tuiRunning{true};
-    std::thread shmPoller([&]() {
-        while (tuiRunning.load()) {
-            pollShm();
-            std::this_thread::sleep_for(std::chrono::milliseconds(20)); // ~50Hz poll
-        }
-    });
 
     std::string cmd;
     while (true) {
         std::cout << "\n[Mute: " << (masterMute.load() ? "ON" : "OFF") 
-                  << " | Latency: " << std::fixed << std::setprecision(2) << measuredLatency.load() << "ms] > " << " | SHM: " << (shmMode.load() ? "ON" : "OFF") << "] > "; 
+                  << " | Latency: " << std::fixed << std::setprecision(2) << measuredLatency.load() << "ms] > " << " | JSON: " << (jsonLive.load() ? "LIVE" : "OFF") << "] > "; 
         
         if (!(std::cin >> cmd)) break;
         
@@ -203,14 +282,16 @@ void runTUI() {
             else if (m == "hw") headsetMode.store(false);
             std::cout << "Mode updated.\n";
         }
-	else if (cmd == "shm") {
+	    else if (cmd == "json") {
             std::string m; std::cin >> m;
-            if (m == "on") {
-                if (!shm) std::cerr << "SHM not attached — start json_caller first.\n";
-                else { shmMode.store(true);  std::cout << "Live IPC mode ON.\n"; }
-            } else if (m == "off") {
-                shmMode.store(false);
-                std::cout << "Live IPC mode OFF.\n";
+            if (m == "on" && !jsonLive.load()) {
+                jsonLive.store(true);
+                listener = std::thread(jsonListenerThread);
+                std::cout << "JSON listener ON.\n";
+            } else if (m == "off" && jsonLive.load()) {
+                jsonLive.store(false);
+                if (listener.joinable()) listener.join();
+                std::cout << "JSON listener OFF.\n";
             }
         }
         else if (cmd == "status") {
@@ -242,8 +323,11 @@ void runTUI() {
             std::cout << "<phase>  Signal phase.                   \t[0:360] º\n";
         }
     }
-    tuiRunning.store(false);
-    shmPoller.join();
+
+    if (jsonLive.load()) {
+        jsonLive.store(false);
+        if (listener.joinable()) listener.join();
+    }
 }
 
 // --- Graphical User Interface (GUI) ---
@@ -260,10 +344,10 @@ void runGUI() {
     ImGui_ImplOpenGL3_Init("#version 130");
 
     ImVec4 clear_color = ImVec4(0.10f, 0.10f, 0.12f, 1.00f);
+    std::thread listener;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        pollShm();
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -285,19 +369,21 @@ void runGUI() {
         bool hMode = headsetMode.load();
         if (ImGui::Checkbox("Headset Monitoring Mode", &hMode)) headsetMode.store(hMode);
 
-	bool sMode = shmMode.load();
-        if (ImGui::Checkbox("Live IPC Mode (receive from json_caller)", &sMode)) {
-            if (sMode && !shm)
-	            shm = attachShm();
-            if (sMode && !shm)
-                ImGui::SetTooltip("SHM not attached — start json_caller first.");
-            else
-                shmMode.store(sMode);
+	    bool jLive = jsonLive.load();
+        if (ImGui::Checkbox("Live JSON Mode (watch trigger file)", &jLive)) {
+            if (jLive && !jsonLive.load()) {
+                jsonLive.store(true);
+                listener = std::thread(jsonListenerThread);
+            } else if (!jLive && jsonLive.load()) {
+                jsonLive.store(false);
+                if (listener.joinable()) listener.join();
+            }
         }
-        if (shmMode.load()) {
+        if (jsonLive.load()) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "LIVE");
         }
+
         ImGui::Text("System Latency: %.2f ms", measuredLatency.load());
         ImGui::End();
 
@@ -329,6 +415,12 @@ void runGUI() {
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
+    }
+
+    if (jsonLive.load()) {
+        jsonLive.store(false);
+        if (listener.joinable()) 
+            listener.join();
     }
     
     ImGui_ImplOpenGL3_Shutdown();
@@ -369,10 +461,6 @@ int main() {
     Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
 
     Pa_StartStream(stream);
-    
-    shm = attachShm();
-    if (!shm) 
-        std::cout << "SHM not available yet — start json_caller before enabling Live IPC.\n";
 
     std::cout << "Select Mode:\n[1] GUI\n[2] TUI\nChoice: ";
     int choice; std::cin >> choice;
@@ -384,10 +472,6 @@ int main() {
     Pa_CloseStream(stream);
     Pa_Terminate();
 
-    if (shm){
-        munmap(shm, sizeof(SharedBlock));
-        shm_unlink(SHM_NAME);
-    }
 
     return 0;
 }
