@@ -23,27 +23,39 @@ TRANSITIONS = ["LOW", "MEDIUM", "HIGH"]
 
 
 def load_library() -> ctypes.CDLL:
+    # Obtém o caminho do diretório onde este script está (test_files/)
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    lib_path = os.path.join(base_dir, "trans.so")
+    
+    # O tx_driver.so é gerado na pasta raiz (um nível acima de test_files/)
+    lib_path = os.path.join(base_dir, "..", "tx_driver.so")
+    lib_path = os.path.abspath(lib_path)
 
     if not os.path.exists(lib_path):
-        print(f"Erro: Biblioteca {lib_path} nao encontrada. Corre 'make {lib_path}'.")
+        print(f"Erro: Biblioteca {lib_path} nao encontrada.")
+        print("Certifica-te que executaste o comando 'make' na pasta raiz do projeto.")
         sys.exit(1)
 
-    trans_lib = ctypes.CDLL(lib_path)
-    trans_lib.send_trigger.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float]
-    trans_lib.send_trigger.restype = ctypes.c_int
+    try:
+        tx_lib = ctypes.CDLL(lib_path)
+        
+        # Definição dos tipos de argumentos e retorno para as funções C++
+        tx_lib.send_trigger.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float]
+        tx_lib.send_trigger.restype = ctypes.c_int
 
-    trans_lib.init_zmq.argtypes = [ctypes.c_char_p]
-    trans_lib.init_zmq.restype = None
+        tx_lib.init_zmq.argtypes = [ctypes.c_char_p]
+        tx_lib.init_zmq.restype = None
 
-    trans_lib.cleanup_zmq.argtypes = []
-    trans_lib.cleanup_zmq.restype = None
-    return trans_lib
+        tx_lib.cleanup_zmq.argtypes = []
+        tx_lib.cleanup_zmq.restype = None
+        
+        return tx_lib
+    except Exception as e:
+        print(f"Erro ao carregar a biblioteca partilhada: {e}")
+        sys.exit(1)
 
 
-def send_packet(trans_lib: ctypes.CDLL, symbol: str, led: str, transition: str, volume: float) -> None:
-    result = trans_lib.send_trigger(
+def send_packet(tx_lib: ctypes.CDLL, symbol: str, led: str, transition: str, volume: float) -> None:
+    result = tx_lib.send_trigger(
         symbol.encode("utf-8"),
         led.encode("utf-8"),
         transition.encode("utf-8"),
@@ -98,9 +110,11 @@ def print_menu() -> None:
     print("q) Sair")
 
 
-def send_random_batch(trans_lib: ctypes.CDLL) -> None:
+def send_random_batch(tx_lib: ctypes.CDLL) -> None:
     try:
-        count = int(input("Numero de pacotes: ").strip())
+        count_str = input("Numero de pacotes: ").strip()
+        if not count_str: return
+        count = int(count_str)
     except ValueError:
         print("Numero invalido.")
         return
@@ -117,7 +131,7 @@ def send_random_batch(trans_lib: ctypes.CDLL) -> None:
         return
 
     for i in range(count):
-        send_packet(trans_lib, *random_payload())
+        send_packet(tx_lib, *random_payload())
         if i < count - 1:
             time.sleep(random.uniform(min_delay, max_delay))
 
@@ -127,8 +141,8 @@ def main() -> int:
     parser.add_argument("--socket", default="ipc:///tmp/swaid.sock", help="ZeroMQ socket endpoint")
     args = parser.parse_args()
 
-    trans_lib = load_library()
-    trans_lib.init_zmq(args.socket.encode("utf-8"))
+    tx_lib = load_library()
+    tx_lib.init_zmq(args.socket.encode("utf-8"))
     print(f"[HI Subsystem] ZeroMQ inicializado em {args.socket}")
 
     try:
@@ -137,11 +151,11 @@ def main() -> int:
             choice = input("Escolha: ").strip().lower()
 
             if choice == "1":
-                send_packet(trans_lib, *ask_manual_payload())
+                send_packet(tx_lib, *ask_manual_payload())
             elif choice == "2":
-                send_packet(trans_lib, *random_payload())
+                send_packet(tx_lib, *random_payload())
             elif choice == "3":
-                send_random_batch(trans_lib)
+                send_random_batch(tx_lib)
             elif choice == "4":
                 print(f"Symbols: {', '.join(SYMBOLS)}")
                 print(f"LEDs: {', '.join(LEDS)}")
@@ -153,7 +167,7 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\n[HI Subsystem] Interrompido pelo utilizador.")
     finally:
-        trans_lib.cleanup_zmq()
+        tx_lib.cleanup_zmq()
         print("[HI Subsystem] ZeroMQ encerrado de forma segura.")
 
     return 0
