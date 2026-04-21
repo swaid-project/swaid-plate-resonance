@@ -35,19 +35,20 @@ const int SAMPLE_RATE = 48000; // Obviusly this can be changed
 const int FRAMES_PER_BUFFER = 256;
 
 // 7.1 Variant
-//const int NUM_CHANNELS = 8; 
-//const int NUM_GENERATORS = 8; // One independent generator per physical output channel 
+const int NUM_CHANNELS = 8; 
+const int NUM_GENERATORS = 8; // One independent generator per physical output channel 
 
 // 5.1 Variant
-const int NUM_CHANNELS = 6; 
-const int NUM_GENERATORS = 6; // One independent generator per physical output channel
+//const int NUM_CHANNELS = 6; 
+//const int NUM_GENERATORS = 6; // One independent generator per physical output channel
+
 const int NUM_TRANSDUCERS = 4;
 
 const char* CH_LABEL[NUM_GENERATORS] = {
     "Front L", "Front R",
-    "Center ", "Subwoof",
-    "Rear  L", "Rear  R",
-    // "Side L", "Side R", // Waiting for the 7.1 Soundcard
+    "Center" , "Subwoof",
+    "Rear L" , "Rear R" ,
+    "Side L" , "Side R" , // Waiting for the 7.1 Soundcard, doesn't exist in 5.1
 };
 
 struct TransducerData {
