@@ -51,7 +51,7 @@ extern "C" {
         }
     }
     
-    int send_trigger(const char* symbol_id, const char* led_id, const char* transition_time, float volume_percent) {
+    int send_trigger(const char* symbol_id, const char* led_id, const char* fade_transition, float volume_percent, int music_note, const char* music_rhythm, int bpm) {
         if (!push_socket) {
             std::cerr << "[C++ Native Error] ZeroMQ not initialized. Call init_zmq first.\n";
             return -1;
@@ -70,11 +70,13 @@ extern "C" {
             "    \"command\" : {\n"
             "        \"symbol_id\": \"%s\",\n"
             "        \"led_id\" : \"%s\",\n"
-            "        \"transition_time_ms\" : \"%s\",\n"
-            "        \"volume_percent\": %.1f\n"
+            "        \"fade_transition\" : \"%s\",\n"
+            "        \"music_note\" : %d,\n"
+            "        \"music_rhythm\" : \"%s\",\n"
+            "        \"BPM\" : %d\n"
             "    }\n"
             "}",
-            timestamp, symbol_id, led_id, transition_time, volume_percent
+            timestamp, symbol_id, led_id, fade_transition, music_note, music_rhythm, bpm
         );
 
         // Check for snprintf buffer truncation

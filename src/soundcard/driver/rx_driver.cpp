@@ -98,7 +98,7 @@ std::map<std::string, Json::Value> loadCatalogue(const std::string& file) {
     return catalogue;
 }
 
-std::string jsonExtractor(const std::string& payload) {
+std::pair <std::string, std::string> jsonExtractor(const std::string& payload) {
 
     Json::Value message;
     Json::CharReaderBuilder builder;
@@ -108,18 +108,30 @@ std::string jsonExtractor(const std::string& payload) {
 
     if (!Json::parseFromStream(builder, iss, &message, &errs)) {
         std::cerr << "JSON parse error: " << errs << "\n";
-        return {};
+        return {"",""};
     }
 
     
     if (message["message_type"] == "trigger")
-        return message["command"]["symbol_id"].asString();
+        return {message["command"]["symbol_id"].asString(), message["command"]["fade_transition"].asString()};
 
     std::cerr << "No valid trigger message.\n";
-    return {};
+    return {"",""};
 }
 
-void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std::string& symbol_id) {
+// --- Duration for the amplitude for fade
+int fadeDurationMs(const std::string& t) {
+    if (t == "FAST")   
+        return 100;
+    if (t == "MEDIUM") 
+        return 300;
+
+    return 500; 
+}
+
+
+void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std::string& symbol_id, const std::string& fade_transition) {
+
     auto it = catalogue.find(symbol_id);
 
     if (it == catalogue.end()) {
@@ -128,6 +140,12 @@ void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std
     }
 
     const Json::Value& pattern = it->second;
+
+    std::vector<float> fromAmps(NUM_GENERATORS);
+    std::vector<float> toAmps(NUM_GENERATORS, 0.0f);
+
+    for (int i = 0; i < NUM_GENERATORS; i++)
+        fromAmps[i] = generators[i].amp.load();
  
     for (const auto& t : pattern["hardware_config"]["transducers"]) {
         int idx = t["channel"].asInt() - 1;
@@ -135,10 +153,36 @@ void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std
         if (idx < 0 || idx >= NUM_GENERATORS) 
             continue;
 
-        generators[idx].freq.store(    t["frequency_hz"].asFloat());
-        generators[idx].amp.store(     t["amplitude"].asFloat());
-        generators[idx].phaseDeg.store(t["phase_deg"].asFloat());
+        generators[idx].freq.store(     t["frequency_hz"].asFloat());
+        generators[idx].amp.store(      t["amplitude"].asFloat()   );
+      //generators[idx].phaseDeg.store( t["phase_deg"].asFloat()   );
+        toAmps[idx] = t["amplitude"].asFloat();
     }
+
+    int duration = fadeDurationMs(fade_transition);
+
+    std::thread([fromAmps, toAmps, duration, symbol_id, fade_transition]() {
+        const int steps  = 60;
+
+        int stepMs = std::max(1, duration / steps);
+
+        for (int s = 1; s <= steps; s++) {
+            float t = (float)s / steps;
+
+            for (int i = 0; i < NUM_GENERATORS; i++)
+                generators[i].amp.store(fromAmps[i] + t * (toAmps[i] - fromAmps[i]));
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(stepMs));
+        }
+
+        // Ensure we land exactly on target
+        for (int i = 0; i < NUM_GENERATORS; i++)
+            generators[i].amp.store(toAmps[i]);
+
+        std::cout << "Applying: " << symbol_id << " | Fade: " << fade_transition << " (" << duration << "ms)\n";
+
+    }).detach();
+
 }
 
 void jsonListenerThread() {
@@ -175,21 +219,23 @@ void jsonListenerThread() {
 	while (jsonLive.load()) {
 		zmq::message_t msg;
 		auto result = pull_socket.recv(msg, zmq::recv_flags::none);
+
 		if (!result) {
 			continue;
 		}
 
 		std::string payload(static_cast<char*>(msg.data()), msg.size());
-		std::string symbol = jsonExtractor(payload);
+		auto [symbol, fade] = jsonExtractor(payload);
+
         std::cout << "Parsed symbol: " << symbol << "\n";
 		if (!symbol.empty()) {
-			applyPattern(catalogue, symbol);
+			applyPattern(catalogue, symbol, fade);
 		}
 	}
 
 }
 
-// Helper function to reset all generators
+// --- Helper function to reset all generators
 void resetGenerators() {
     for (auto& gen : generators) {
         gen.freq.store(440.0f);
