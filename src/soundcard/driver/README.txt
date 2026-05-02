@@ -4,11 +4,7 @@ The imgui/ folder contains src code extracted from https://github.com/ocornut/im
 
 - git clone https://github.com/ocornut/imgui
 
-The commands to install the dependencies, for a Debian-based distro, are the following:
-
-- sudo apt install portaudio19-dev
-- sudo apt install libglfw3-dev
-- sudo apt install libzmq3-dev cppzmq-dev
+To install the dependencies one shall run install-dependencies.sh 
 
 To compile, run, and clean all resulting files from this software, a makefile is present:
 
