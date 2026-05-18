@@ -29,6 +29,15 @@ const char* ZMQ_ENDPOINT   = "ipc:///tmp/swaid.sock";
 #include <limits>
 #include <zmq.hpp>
 
+// --- Serial communication for Pico LED control ---
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <cstring>
+#include <errno.h>
+#include <sys/ioctl.h>
+
 // --- Constants ---
 const double PI = 3.14159265358979323846;
 const int SAMPLE_RATE = 48000; // Obviusly this can be changed
@@ -77,6 +86,25 @@ std::atomic<bool> jsonLive{false};
 
 bool guiRunning = false;
 
+// --- LED Effect Mapping (Symbol ID -> Pico Effect Index 0-19)
+const int TOTAL_LED_EFFECTS = 20;
+std::atomic<int> currentLedEffect{0};
+std::atomic<int> picoSerialFd{-1};
+
+const std::map<std::string, int> SYMBOL_TO_LED_EFFECT = {
+    {"CHLADNI_CROSS",       0},   // Arco-Iris Fluido
+    {"CHLADNI_STAR_4",     10},   // Explosao de Estrela
+    {"CHLADNI_RING",        3},   // Respiracao Oceano
+    {"CHLADNI_DIAGONAL",    7},   // Scanner Duplo
+    {"CHLADNI_GRID_2x2",   14},   // Matrix
+    {"CHLADNI_STAR_8",      4},   // Aurora Boreal
+    {"CHLADNI_SPIRAL",      9},   // Serpente Cromatica
+    {"CHLADNI_FLOWER_6",    5},   // Cometa Arco-Iris
+    {"CHLADNI_BUTTERFLY",   8},   // Vagalumes
+    {"CHLADNI_MANDALA",    17},   // Galaxia
+    {"CHLADNI_TORUS_KNOT",  6},   // Plasma Quantico
+};
+
 // --- JSON functions
 
 std::map<std::string, Json::Value> loadCatalogue(const std::string& file) {
@@ -121,14 +149,127 @@ std::pair <std::string, std::string> jsonExtractor(const std::string& payload) {
 
 // --- Duration for the amplitude for fade
 int fadeDurationMs(const std::string& t) {
-    if (t == "FAST")   
+    if (t == "FAST")
         return 100;
-    if (t == "MEDIUM") 
+    if (t == "MEDIUM")
         return 300;
 
-    return 500; 
+    return 500;
 }
 
+// --- Serial helpers for Pico LED control ---
+
+int findPicoPort() {
+    const char* commonPaths[] = {
+        "/dev/ttyACM0", "/dev/ttyACM1",
+        "/dev/ttyUSB0", "/dev/ttyUSB1",
+        nullptr
+    };
+    for (int i = 0; commonPaths[i]; i++) {
+        if (access(commonPaths[i], F_OK) == 0) {
+            int fd = open(commonPaths[i], O_RDWR | O_NOCTTY | O_NDELAY);
+            if (fd >= 0) return fd;
+        }
+    }
+
+    DIR* dir = opendir("/dev/serial/by-id/");
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            if (entry->d_type == DT_LNK || entry->d_type == DT_UNKNOWN) {
+                char path[512];
+                snprintf(path, sizeof(path), "/dev/serial/by-id/%s", entry->d_name);
+                int fd = open(path, O_RDWR | O_NOCTTY | O_NDELAY);
+                if (fd >= 0) {
+                    closedir(dir);
+                    return fd;
+                }
+            }
+        }
+        closedir(dir);
+    }
+    return -1;
+}
+
+bool configureSerialPort(int fd) {
+    if (fd < 0) return false;
+    struct termios tty;
+    if (tcgetattr(fd, &tty) != 0) {
+        std::cerr << "[LED Serial] tcgetattr error: " << strerror(errno) << "\n";
+        return false;
+    }
+    cfsetospeed(&tty, B9600);
+    cfsetispeed(&tty, B9600);
+    tty.c_cflag &= ~PARENB;
+    tty.c_cflag &= ~CSTOPB;
+    tty.c_cflag &= ~CSIZE;
+    tty.c_cflag |= CS8;
+    tty.c_cflag |= CREAD | CLOCAL;
+    tty.c_cflag &= ~HUPCL;  // Prevent DTR drop on close (avoid Pico reset)
+    tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+    tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+    tty.c_oflag &= ~OPOST;
+    tcsetattr(fd, TCSANOW, &tty);
+    tcflush(fd, TCIOFLUSH);
+    return true;
+}
+
+bool initPicoSerial() {
+    int fd = findPicoPort();
+    if (fd < 0) {
+        std::cerr << "[LED Serial] Pico not found on any known serial port.\n";
+        return false;
+    }
+    if (!configureSerialPort(fd)) {
+        close(fd);
+        return false;
+    }
+    // Clear DTR to prevent Pico reset on port open
+    int flags = 0;
+    ioctl(fd, TIOCMGET, &flags);
+    flags &= ~TIOCM_DTR;
+    ioctl(fd, TIOCMSET, &flags);
+    picoSerialFd.store(fd);
+    std::cout << "[LED Serial] Connected to Pico (fd=" << fd << ")\n";
+    // Wait for Pico USB CDC to be ready after port open
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    tcflush(fd, TCIOFLUSH);
+    return true;
+}
+
+void closePicoSerial() {
+    int fd = picoSerialFd.load();
+    if (fd >= 0) {
+        close(fd);
+        picoSerialFd.store(-1);
+    }
+}
+
+void sendSerialCommand(const char* cmd) {
+    int fd = picoSerialFd.load();
+    if (fd < 0) return;
+    std::string msg = std::string(cmd) + "\n";
+    ssize_t w = write(fd, msg.c_str(), msg.length());
+    if (w < 0) {
+        std::cerr << "[LED Serial] write error: " << strerror(errno) << "\n";
+        return;
+    }
+    // Ensure the command is actually transmitted over USB
+    tcdrain(fd);
+    std::cout << "[LED Serial] Sent: " << cmd << "\n";
+}
+
+// Send a direct effect jump command to the Pico.
+// The Pico handles the fade transition internally.
+void sendLedEffect(int targetEffect) {
+    if (targetEffect < 0 || targetEffect >= TOTAL_LED_EFFECTS) return;
+    if (currentLedEffect.load() == targetEffect) return;
+
+    std::string cmd = "FX:" + std::to_string(targetEffect);
+    sendSerialCommand(cmd.c_str());
+    currentLedEffect.store(targetEffect);
+    std::cout << "[LED Serial] Sent " << cmd << "\n";
+}
 
 void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std::string& symbol_id, const std::string& fade_transition) {
 
@@ -192,6 +333,8 @@ void jsonListenerThread() {
         std::cerr << "Catalogue empty — ZeroMQ listener exiting.\n";
         return;
     }
+
+    initPicoSerial(); // Attempt to connect to Pico LEDs (non-critical)
  
     zmq::context_t context(1);
 	zmq::socket_t pull_socket(context, zmq::socket_type::pull);
@@ -230,9 +373,20 @@ void jsonListenerThread() {
         std::cout << "Parsed symbol: " << symbol << "\n";
 		if (!symbol.empty()) {
 			applyPattern(catalogue, symbol, fade);
+
+			// --- Parallel LED control ---
+			auto itLed = SYMBOL_TO_LED_EFFECT.find(symbol);
+			if (itLed != SYMBOL_TO_LED_EFFECT.end()) {
+				int targetFx = itLed->second;
+				std::thread([targetFx]() {
+					sendLedEffect(targetFx);
+				}).detach();
+			}
 		}
 	}
 
+	closePicoSerial();
+	std::cout << "[LED Serial] Disconnected from Pico.\n";
 }
 
 // --- Helper function to reset all generators
