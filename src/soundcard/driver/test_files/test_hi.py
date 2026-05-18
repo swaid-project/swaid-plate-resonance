@@ -18,7 +18,6 @@ SYMBOLS = [
     "CHLADNI_MANDALA",
     "CHLADNI_TORUS_KNOT",
 ]
-LEDS = ["PULSE_R", "PULSE_G", "PULSE_B", "SOLID_WHITE", "STROBE_R"]
 TRANSITIONS = ["SLOW", "MEDIUM", "FAST"]
 MUSIC_NOTES      = list(range(1, 13))       # 1–12
 MUSIC_RHYTHMS    = ["sequence_1", "sequence_2", "sequence_3", "sequence_4"]
@@ -57,29 +56,28 @@ def load_library() -> ctypes.CDLL:
         sys.exit(1)
 
 
-def send_packet(tx_lib: ctypes.CDLL, symbol: str, led: str, transition: str, volume: float, note: int, rhythm: str, bpm: int) -> None:
+def send_packet(tx_lib: ctypes.CDLL, symbol: str, transition: str, volume: float, note: int, rhythm: str, bpm: int) -> None:
     result = tx_lib.send_trigger(
         symbol.encode("utf-8"),
-        led.encode("utf-8"),
+        b"AUTO",  # LED effect is auto-mapped by rx_driver via symbol ID
         transition.encode("utf-8"),
         ctypes.c_float(volume),
         ctypes.c_int(note),
-        rhythm.encode("utf-8"), 
+        rhythm.encode("utf-8"),
         ctypes.c_int(bpm),
     )
 
     if result == 1:
-        print(f"[Enviado] Symbol: {symbol:<20} | LED: {led:<10} | Transition: {transition:<6} | Note: {note} | Rhythm: {rhythm} | BPM: {bpm} | Vol: {volume:5.1f}%")
+        print(f"[Enviado] Symbol: {symbol:<20} | Transition: {transition:<6} | Note: {note} | Rhythm: {rhythm} | BPM: {bpm} | Vol: {volume:5.1f}%")
     elif result == 0:
         print("[Aviso] Fila ZeroMQ cheia. Pacote descartado (DONTWAIT).")
     else:
         print("[Erro] Falha no envio via ZeroMQ.")
 
 
-def random_payload() -> tuple[str, str, str, float]:
+def random_payload() -> tuple[str, str, float, int, str, int]:
     return (
         random.choice(SYMBOLS),
-        random.choice(LEDS),
         random.choice(TRANSITIONS),
         random.uniform(0.0, 100.0),
         random.choice(MUSIC_NOTES),
@@ -88,10 +86,9 @@ def random_payload() -> tuple[str, str, str, float]:
     )
 
 
-def ask_manual_payload() -> tuple[str, str, str, float]:
+def ask_manual_payload() -> tuple[str, str, float, int, str, int]:
     print("\nManual packet (carrega Enter para usar default):")
     symbol = input(f"  symbol [{SYMBOLS[0]}]: ").strip() or SYMBOLS[0]
-    led = input(f"  led [{LEDS[0]}]: ").strip() or LEDS[0]
     transition = input(f"  transition [{TRANSITIONS[1]}]: ").strip() or TRANSITIONS[1]
     note_str     = input(f"  music_note [1-12, default 5]: ").strip()    or "5"
     rhythm       = input(f"  music_rhythm [{MUSIC_RHYTHMS[0]}]: ").strip() or MUSIC_RHYTHMS[0]
@@ -110,7 +107,7 @@ def ask_manual_payload() -> tuple[str, str, str, float]:
         except ValueError:
             print("  Valor invalido.")
 
-    return symbol, led, transition, volume, int(note_str), rhythm, int(bpm_str)
+    return symbol, transition, volume, int(note_str), rhythm, int(bpm_str)
 
 
 def print_menu() -> None:
@@ -118,7 +115,7 @@ def print_menu() -> None:
     print("1) Enviar pacote manual")
     print("2) Enviar 1 pacote random")
     print("3) Enviar N pacotes random")
-    print("4) Mostrar listas disponiveis")
+    print("4) Mostrar simbolos disponiveis")
     print("q) Sair")
 
 
@@ -170,7 +167,6 @@ def main() -> int:
                 send_random_batch(tx_lib)
             elif choice == "4":
                 print(f"Symbols: {', '.join(SYMBOLS)}")
-                print(f"LEDs: {', '.join(LEDS)}")
                 print(f"Transitions: {', '.join(TRANSITIONS)}")
                 print(f"Music notes:      {MUSIC_NOTES}")
                 print(f"Music rhythms:    {', '.join(MUSIC_RHYTHMS)}")
