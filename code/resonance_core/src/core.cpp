@@ -16,8 +16,21 @@ std::map<std::string, Json::Value> loadCatalogue(const std::string& file) {
 
     std::map<std::string, Json::Value> catalogue;
 
+    if (root.isArray()) {
+        std::cout << "Found JSON Array with " << root.size() << " elements.\n";
+        for (const auto& entry : root) {
+            // CHANGE: Use "id" instead of "symbol_id"
+            if (entry.isMember("id")) {
+                std::string symbolId = entry["id"].asString();
+                catalogue[symbolId] = entry;
+            } 
+        }
+    }
+
+    /*
     for (const auto& key : root.getMemberNames())
         catalogue[key] = root[key];
+    */
 
     return catalogue;
 }
@@ -109,6 +122,27 @@ void jsonListenerThread() {
             */
 		}
 	}
+}
+
+void runHeadless() {
+    std::cout << "\n--- Headless Mode Activated (JSON Listener Only) ---\n";
+    
+    if (!jsonLive.load()) {
+        jsonLive.store(true);
+        // Start the listener thread
+        std::thread listener(jsonListenerThread);
+        
+        std::cout << "ZeroMQ Listener started automatically.\n";
+        std::cout << "Press Ctrl+C to terminate the program.\n";
+
+        // Since there is no input, we just sleep.
+        while (jsonLive.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+
+        if (listener.joinable()) 
+            listener.join();
+    }
 }
 
 

@@ -43,8 +43,12 @@ std::pair <std::string, std::string> jsonExtractor(const std::string& payload);
 // --- Hearing the SDK connection
 void jsonListenerThread();
 
+// --- Official interface
+void runHeadless();
+
 // GUI/TUI DEBUG related. It will be wiped
 #ifdef DEBUG
     void runGUI();
     void runTUI();
-#endif
+#endif // DEBUG
+    

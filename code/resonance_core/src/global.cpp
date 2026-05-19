@@ -9,7 +9,7 @@ std::atomic<bool> jsonLive{false};
 // --- JSON instantiation
 
 // --- ZeroMQ instantiation
-const char* CATALOGUE_PATH = "json_files/catalogue.json";   
+const char* CATALOGUE_PATH = "../../simulator/sim/symbols/master_symbols_20260511_192054.json";   
 const char* ZMQ_ENDPOINT   = "ipc:///tmp/swaid.sock";
 
 // --- ZeroMQ instantiation
