@@ -4,7 +4,7 @@
 mkdir -p build
 mkdir -p third_party
 
-if [ $1 == "DEBUG" ]; then
+if [ "$1" == "DEBUG" ]; then
     echo "[*] Installing GUI dependencies"
     cd third_party
     git clone https://github.com/ocornut/imgui

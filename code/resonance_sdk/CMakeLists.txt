@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ── Project Structure ────────────────────────────────────────────────────────
 
 include_directories(include)
+link_directories(lib)
 
 set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 include_directories(${THIRD_PARTY_DIR})

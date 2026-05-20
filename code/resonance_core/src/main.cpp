@@ -32,16 +32,6 @@ int main() {
 
     Pa_StartStream(stream);
 
-    #ifdef DEBUG
-        std::cout << "Select Mode:\n[1] GUI\n[2] TUI\n[3] Headless (Official)\nChoice: ";
-        int choice; 
-        std::cin >> choice;
-
-        if (choice == 1) runGUI();
-        else if (choice == 2) runTUI();
-        else runHeadless();
-    #endif // DEBUG
-
     runHeadless();
 
     Pa_StopStream(stream);

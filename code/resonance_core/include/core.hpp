@@ -1,4 +1,4 @@
-#define DEBUG 1
+#pragma once
 
 // --- Main libraries
 #include <iostream>
@@ -13,7 +13,8 @@
 // --- JSON related
 #include <map>          
 #include <sys/inotify.h>
-#include <jsoncpp/json/json.h>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 #include <fstream>
 #include <sstream>
 
@@ -22,33 +23,16 @@
 #include <limits>
 #include <zmq.hpp>
 
-// --- GUI/TUI related
-#ifdef DEBUG
-    #include "imgui.h"
-    #include "imgui_impl_glfw.h"
-    #include "imgui_impl_opengl3.h"
-#endif
-
 extern const char* CATALOGUE_PATH;   
 extern const char* ZMQ_ENDPOINT;
 
 extern std::atomic<bool> jsonLive;
 
 // --- Loading file into a map memory
-std::map<std::string, Json::Value> loadCatalogue(const std::string& file);
-
-// --- Extrating the JSON objects
-std::pair <std::string, std::string> jsonExtractor(const std::string& payload);
+std::map<std::string, json> loadCatalogue(const std::string& file);
 
 // --- Hearing the SDK connection
 void jsonListenerThread();
 
 // --- Official interface
 void runHeadless();
-
-// GUI/TUI DEBUG related. It will be wiped
-#ifdef DEBUG
-    void runGUI();
-    void runTUI();
-#endif // DEBUG
-    

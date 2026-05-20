@@ -57,6 +57,47 @@ extern "C" {
         );
     }
 
+    void format_manual_audio(int channel, float freq, float amp, float phase, char* out_buffer, int max_len) {
+        snprintf(out_buffer, max_len,
+            "{\n"
+            "    \"message_type\": \"manual_audio\",\n"
+            "    \"command\" : {\n"
+            "        \"channel\": %d,\n"
+            "        \"frequency_hz\": %f,\n"
+            "        \"amplitude\": %f,\n"
+            "        \"phase_deg\": %f\n"
+            "    }\n"
+            "}",
+            channel, freq, amp, phase
+        );
+    }
+
+    void format_manual_led(int led_effect, char* out_buffer, int max_len) {
+        snprintf(out_buffer, max_len,
+            "{\n"
+            "    \"message_type\": \"manual_led\",\n"
+            "    \"command\" : {\n"
+            "        \"led_effect\": %d\n"
+            "    }\n"
+            "}",
+            led_effect
+        );
+    }
+
+    void format_master_control(bool mute, bool reset, char* out_buffer, int max_len) {
+        snprintf(out_buffer, max_len,
+            "{\n"
+            "    \"message_type\": \"master_control\",\n"
+            "    \"command\" : {\n"
+            "        \"mute\": %s,\n"
+            "        \"reset\": %s\n"
+            "    }\n"
+            "}",
+            mute ? "true" : "false",
+            reset ? "true" : "false"
+        );
+    }
+
     int send_zmq(const char* json_payload) {
         if (!push_socket) {
             std::cerr << "[C++ Native Error] ZeroMQ not initialized. Call init_zmq first.\n";
