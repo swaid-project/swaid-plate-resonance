@@ -13,7 +13,8 @@ include_directories(${THIRD_PARTY_DIR})
 
 file(GLOB_RECURSE SDK_SOURCES "src/*.cpp")
 
-add_library(resonance_sdk STATIC ${SDK_SOURCES})
+add_library(resonance_sdk SHARED ${SDK_SOURCES})
+target_link_libraries(resonance_sdk PRIVATE zmq)
 
 # ── Compiler Settings ────────────────────────────────────────────────────────
 
