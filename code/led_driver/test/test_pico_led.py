@@ -26,28 +26,27 @@ import sys
 
 TOTAL_EFEITOS = 20
 NOMES_EFEITOS = [
-    "0  — Arco-Íris Fluido",
-    "1  — Confetes",
-    "2  — Scanner Cylon",
-    "3  — Respiração Oceano",
-    "4  — Aurora Boreal",
-    "5  — Cometa Arco-Íris",
-    "6  — Plasma Quântico",
-    "7  — Scanner Duplo",
-    "8  — Vagalumes",
-    "9  — Serpente Cromática",
-    "10 — Explosão de Estrela",
-    "11 — Preenchimento Surpresa",
-    "12 — 🔥 Fogo",
-    "13 — 🌊 Água",
-    "14 — 💚 Matrix",
-    "15 — 🌋 Lava",
-    "16 — ⚡ Tempestade",
-    "17 — 🌌 Galáxia",
-    "18 — 💜 Néon",
-    "19 — ❄️  Neveiro",
+    "0  - Fluid Rainbow",
+    "1  - Confetti",
+    "2  - Cylon Scanner",
+    "3  - Ocean Breath",
+    "4  - Aurora Borealis",
+    "5  - Rainbow Comet",
+    "6  - Quantum Plasma",
+    "7  - Double Scanner",
+    "8  - Fireflies",
+    "9  - Chromatic Snake",
+    "10 - Starburst",
+    "11 - Random Fill",
+    "12 - Fire",
+    "13 - Water",
+    "14 - Matrix",
+    "15 - Lava Lamp",
+    "16 - Storm",
+    "17 - Galaxy",
+    "18 - Neon",
+    "19 - Blizzard",
 ]
-
 
 def encontrar_porta_pico():
     portas = serial.tools.list_ports.comports()
@@ -77,6 +76,7 @@ def print_menu():
     print("r         → Efeito aleatório")
     print("s         → Mostrar lista de efeitos")
     print("q         → Sair")
+    print("=====================")
 
 
 def main():
@@ -86,9 +86,9 @@ def main():
     try:
         ser = serial.Serial(porta, 9600, timeout=1)
         time.sleep(2)
-        print("✅ Ligado!\n")
+        print("[Info] Ligação estabelecida com sucesso.\n")
     except Exception as e:
-        print(f"❌ Erro ao ligar: {e}")
+        print(f"[Erro] Falha ao aceder à porta serial: {e}")
         sys.exit(1)
 
     try:
@@ -112,15 +112,15 @@ def main():
                     if 0 <= fx < TOTAL_EFEITOS:
                         enviar_fx(ser, fx)
                     else:
-                        print(f"[Erro] ID deve estar entre 0 e {TOTAL_EFEITOS - 1}")
+                        print(f"[Aviso] ID deve estar entre 0 e {TOTAL_EFEITOS - 1}")
                 except ValueError:
                     print("[Erro] Escolha inválida.")
 
     except KeyboardInterrupt:
-        print("\nInterrompido.")
+        print("\n[Info] Execução interrompida pelo utilizador.")
     finally:
         ser.close()
-        print("Serial encerrado.")
+        print("[Info] Porta serial encerrada.")
 
 
 if __name__ == "__main__":

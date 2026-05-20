@@ -114,26 +114,26 @@ void piscarLED() {
 
 void correrEfeito(int efeito, unsigned long tempo) {
   switch(efeito) {
-    case 0:  arcoIrisFluido();        break;
-    case 1:  confetes();              break;
-    case 2:  scannerCylon();          break;
-    case 3:  respiracaoOceano(tempo); break;
-    case 4:  auroraBorealis(tempo);   break;
-    case 5:  cometaArcoIris();        break;
-    case 6:  plasmaQuantico(tempo);   break;
-    case 7:  scannerDuplo();          break;
-    case 8:  vagalumes();             break;
-    case 9:  serpenteCromatica();     break;
-    case 10: explosaoEstrela();       break;
-    case 11: preenchimentoSurpresa(); break;
-    case 12: fogo();                  break;
-    case 13: agua(tempo);             break;
-    case 14: matrix();                break;
-    case 15: lavarLava(tempo);        break;
-    case 16: tempestade(tempo);       break;
-    case 17: galaxia();               break;
-    case 18: neon();                  break;
-    case 19: neveiro(tempo);          break;
+    case 0:  fluidRainbow(); break;
+    case 1:  confetti(); break;
+    case 2:  cylonScanner(); break;
+    case 3:  oceanBreath(tempo); break;
+    case 4:  auroraBorealis(tempo); break;
+    case 5:  rainbowComet(); break;
+    case 6:  quantumPlasma(tempo); break;
+    case 7:  doubleScanner(); break;
+    case 8:  fireflies(); break;
+    case 9:  chromaticSnake(); break;
+    case 10: starburst(); break;
+    case 11: randomFill(); break;
+    case 12: fire(); break;
+    case 13: water(tempo); break;
+    case 14: matrix(); break;
+    case 15: lavaLamp(tempo); break;
+    case 16: storm(tempo); break;
+    case 17: galaxy(); break;
+    case 18: neon(tempo); break;
+    case 19: blizzard(tempo); break;
   }
 }
 
@@ -247,38 +247,38 @@ void escurecerFita(uint8_t taxa) {
 }
 
 // ==========================================
-// EFEITOS (0–19)
+// EFEITOS (0-19)
 // ==========================================
-void arcoIrisFluido() {
+void fluidRainbow() {
   hueGlobal += 150;
   for(int i = 0; i < NUMPIXELS; i++) {
-    int pixelHue = hueGlobal + (i * 65536L / NUMPIXELS);
-    fita.setPixelColor(i, fita.gamma32(fita.ColorHSV(pixelHue)));
+    fita.setPixelColor(i, fita.gamma32(fita.ColorHSV(hueGlobal + (i * 65536L / NUMPIXELS))));
   }
 }
-void confetes() {
+
+void confetti() {
   escurecerFita(15);
-  if (random(10) > 4)
-    fita.setPixelColor(random(NUMPIXELS), fita.ColorHSV(random(65536)));
+  if (random(10) > 4) fita.setPixelColor(random(NUMPIXELS), fita.ColorHSV(random(65536)));
 }
-void scannerCylon() {
+
+void cylonScanner() {
   escurecerFita(25);
   fita.setPixelColor(posicaoAtual, fita.Color(255, 0, 0));
   posicaoAtual += direcao;
   if (posicaoAtual >= NUMPIXELS - 1 || posicaoAtual <= 0) direcao = -direcao;
 }
-void respiracaoOceano(unsigned long tempo) {
+
+void oceanBreath(unsigned long tempo) {
   float onda = (exp(sin(tempo / 1500.0 * PI)) - 0.36787944) * 108.0;
   int brilhoLocal = map(onda, 0, 255, 0, 255);
   uint32_t cor = fita.Color(0, brilhoLocal, brilhoLocal);
   for(int i = 0; i < NUMPIXELS; i++) fita.setPixelColor(i, cor);
 }
+
 void auroraBorealis(unsigned long tempo) {
   for (int i = 0; i < NUMPIXELS; i++) {
     float x = (float)i / NUMPIXELS;
-    float onda1 = sin(x * 6.0 + tempo / 800.0) * 0.5 + 0.5;
-    float onda2 = sin(x * 3.0 - tempo / 1200.0) * 0.5 + 0.5;
-    float mix = onda1 * onda2;
+    float mix = (sin(x * 6.0 + tempo / 800.0) * 0.5 + 0.5) * (sin(x * 3.0 - tempo / 1200.0) * 0.5 + 0.5);
     int verde  = constrain(mix * 200 * sin(x * 2 + tempo / 2000.0), 0, 255);
     int roxo   = constrain(mix * 180 * sin(x * 3 - tempo / 1500.0 + 2), 0, 255);
     int brilho = constrain(mix * 255, 0, 255);
@@ -289,43 +289,46 @@ void auroraBorealis(unsigned long tempo) {
     ));
   }
 }
-void cometaArcoIris() {
+
+void rainbowComet() {
   escurecerFita(20);
   fita.setPixelColor(posicaoAtual, fita.ColorHSV(hueGlobal));
   hueGlobal += 1000;
-  posicaoAtual++;
-  if (posicaoAtual >= NUMPIXELS) posicaoAtual = 0;
+  posicaoAtual = (posicaoAtual + 1) % NUMPIXELS;
 }
-void plasmaQuantico(unsigned long tempo) {
+
+void quantumPlasma(unsigned long tempo) {
   for (int i = 0; i < NUMPIXELS; i++) {
     float x = (float)i / NUMPIXELS;
-    float v = sin(x * 10 + tempo / 300.0)
-            + sin(x * 7  - tempo / 250.0)
-            + sin((x + tempo / 3000.0) * 5);
-    float norm = (v / 3.0 + 1.0) / 2.0;
-    uint16_t h = (uint16_t)(norm * 65535) + (tempo / 33);
+    float v = sin(x * 10 + tempo / 300.0) + sin(x * 7 - tempo / 250.0) + sin((x + tempo / 3000.0) * 5);
+    uint16_t h = (uint16_t)(((v / 3.0 + 1.0) / 2.0) * 65535) + (tempo / 33);
     fita.setPixelColor(i, fita.gamma32(fita.ColorHSV(h, 255, 230)));
   }
 }
-void scannerDuplo() {
+
+void doubleScanner() {
   escurecerFita(30);
   fita.setPixelColor(posicaoAtual, fita.Color(0, 255, 255));
   fita.setPixelColor(NUMPIXELS - 1 - posicaoAtual, fita.Color(255, 0, 255));
   posicaoAtual += direcao;
   if (posicaoAtual >= NUMPIXELS - 1 || posicaoAtual <= 0) direcao = -direcao;
 }
-void vagalumes() {
+
+void fireflies() {
   escurecerFita(5);
-  if (random(100) > 90)
-    fita.setPixelColor(random(NUMPIXELS), fita.Color(150, 255, 0));
+  if (random(100) > 90) fita.setPixelColor(random(NUMPIXELS), fita.Color(150, 255, 0));
 }
-void serpenteCromatica() {
+
+void chromaticSnake() {
   fita.clear();
-  if (serpGrowing) { serpLen++; if (serpLen >= 60) serpGrowing = false; }
-  else             { serpLen--; if (serpLen <= 1)  { serpGrowing = true; serpHue += 8000; direcao = -direcao; } }
-  posicaoAtual += direcao;
-  posicaoAtual = constrain(posicaoAtual, 0, NUMPIXELS - 1);
+  if (serpGrowing) { 
+    if (++serpLen >= 60) serpGrowing = false; 
+  } else { 
+    if (--serpLen <= 1) { serpGrowing = true; serpHue += 8000; direcao = -direcao; } 
+  }
+  posicaoAtual = constrain(posicaoAtual + direcao, 0, NUMPIXELS - 1);
   if (posicaoAtual >= NUMPIXELS - 1 || posicaoAtual <= 0) direcao = -direcao;
+  
   for (int j = 0; j < serpLen; j++) {
     int idx = posicaoAtual - direcao * j;
     if (idx < 0 || idx >= NUMPIXELS) continue;
@@ -333,49 +336,45 @@ void serpenteCromatica() {
     fita.setPixelColor(idx, fita.gamma32(fita.ColorHSV(serpHue + j * 300, 255, bright * 255)));
   }
 }
-void explosaoEstrela() {
+
+void starburst() {
   escurecerFita(18);
   int centro = NUMPIXELS / 2;
   uint32_t cor = fita.gamma32(fita.ColorHSV(hueGlobal, 255, 255));
   fita.setPixelColor(centro + posicaoAtual, cor);
   fita.setPixelColor(centro - posicaoAtual, cor);
-  posicaoAtual++;
-  if (posicaoAtual >= centro) { posicaoAtual = 0; hueGlobal += 9000; }
+  if (++posicaoAtual >= centro) { posicaoAtual = 0; hueGlobal += 9000; }
 }
-void preenchimentoSurpresa() {
-  if (fase == 0) fita.setPixelColor(posicaoAtual, fita.ColorHSV(corAlvo));
-  else           fita.setPixelColor(posicaoAtual, fita.Color(0, 0, 0));
-  posicaoAtual++;
-  if (posicaoAtual >= NUMPIXELS) {
+
+void randomFill() {
+  fita.setPixelColor(posicaoAtual, (fase == 0) ? fita.ColorHSV(corAlvo) : fita.Color(0, 0, 0));
+  if (++posicaoAtual >= NUMPIXELS) {
     posicaoAtual = 0;
     fase = !fase;
     if (fase == 0) corAlvo = random(65536);
   }
 }
-void fogo() {
+
+void fire() {
   for (int i = NUMPIXELS - 1; i > 0; i--) {
     uint32_t c = fita.getPixelColor(i - 1);
-    int r = (c >> 16) & 0xFF;
-    int g = (c >>  8) & 0xFF;
-    int b = c & 0xFF;
-    r = constrain(r - random(15), 0, 255);
-    g = constrain(g - random(20), 0, 255);
-    fita.setPixelColor(i, fita.Color(r, g, b));
+    fita.setPixelColor(i, fita.Color(
+      constrain(((c >> 16) & 0xFF) - random(15), 0, 255),
+      constrain(((c >> 8) & 0xFF) - random(20), 0, 255),
+      c & 0xFF
+    ));
   }
   int calor = random(180, 255);
-  int verde  = random(0, calor / 3);
-  fita.setPixelColor(0, fita.Color(calor, verde, 0));
+  fita.setPixelColor(0, fita.Color(calor, random(0, calor / 3), 0));
 }
-void agua(unsigned long tempo) {
+
+void water(unsigned long tempo) {
   for (int i = 0; i < NUMPIXELS; i++) {
-    float onda  = sin((float)i / 8.0 - tempo / 300.0) * 0.5 + 0.5;
-    float onda2 = sin((float)i / 5.0 + tempo / 500.0) * 0.3 + 0.3;
-    float mix = (onda + onda2) / 2.0;
-    int azul  = constrain(mix * 255, 80, 255);
-    int verde = constrain(mix * 160, 20, 160);
-    fita.setPixelColor(i, fita.Color(0, verde, azul));
+    float mix = (sin((float)i / 8.0 - tempo / 300.0) * 0.5 + 0.5 + sin((float)i / 5.0 + tempo / 500.0) * 0.3 + 0.3) / 2.0;
+    fita.setPixelColor(i, fita.Color(0, constrain(mix * 160, 20, 160), constrain(mix * 255, 80, 255)));
   }
 }
+
 static uint8_t matrixBrilho[180] = {0};
 void matrix() {
   for (int i = 0; i < NUMPIXELS; i++) {
@@ -388,21 +387,19 @@ void matrix() {
     fita.setPixelColor(pos, fita.Color(180, 255, 180));
   }
 }
-void lavarLava(unsigned long tempo) {
+
+void lavaLamp(unsigned long tempo) {
   for (int i = 0; i < NUMPIXELS; i++) {
     float x = (float)i / NUMPIXELS;
-    float v = sin(x * 4.0 + tempo / 1200.0) * sin(x * 7.0 - tempo / 800.0);
-    float norm = (v + 1.0) / 2.0;
-    int r = constrain(norm * 255 + 80, 0, 255);
-    int g = constrain(norm * 80,       0, 255);
-    fita.setPixelColor(i, fita.Color(r, g, 0));
+    float norm = (sin(x * 4.0 + tempo / 1200.0) * sin(x * 7.0 - tempo / 800.0) + 1.0) / 2.0;
+    fita.setPixelColor(i, fita.Color(constrain(norm * 255 + 80, 0, 255), constrain(norm * 80, 0, 255), 0));
   }
 }
+
 static unsigned long proximoRelampago = 0;
 static int relampagoDuracao = 0;
-void tempestade(unsigned long tempo) {
-  for (int i = 0; i < NUMPIXELS; i++)
-    fita.setPixelColor(i, fita.Color(0, 0, 20 + random(5)));
+void storm(unsigned long tempo) {
+  for (int i = 0; i < NUMPIXELS; i++) fita.setPixelColor(i, fita.Color(0, 0, 20 + random(5)));
   if (tempo > proximoRelampago) {
     relampagoDuracao = random(2, 6);
     proximoRelampago = tempo + random(500, 3000);
@@ -417,43 +414,35 @@ void tempestade(unsigned long tempo) {
     relampagoDuracao--;
   }
 }
+
 static uint8_t estrelas[180] = {0};
 static uint8_t estrelasDir[180] = {0};
-void galaxia() {
+void galaxy() {
   if (posicaoAtual == 0) {
-    for (int i = 0; i < NUMPIXELS; i++) {
-      estrelas[i]    = random(0, 80);
-      estrelasDir[i] = random(0, 2);
-    }
+    for (int i = 0; i < NUMPIXELS; i++) { estrelas[i] = random(0, 80); estrelasDir[i] = random(0, 2); }
     posicaoAtual = 1;
   }
   for (int i = 0; i < NUMPIXELS; i++) {
     if (estrelasDir[i]) { estrelas[i] += 3; if (estrelas[i] >= 220) estrelasDir[i] = 0; }
     else                { estrelas[i] -= 3; if (estrelas[i] <= 10)  estrelasDir[i] = 1; }
-    uint8_t nebula_r = estrelas[i] / 4;
-    uint8_t nebula_b = estrelas[i] / 2;
-    uint8_t star     = (estrelas[i] > 180) ? estrelas[i] : 0;
-    fita.setPixelColor(i, fita.Color(nebula_r + star / 3, star / 4, nebula_b + star / 2));
+    uint8_t star = (estrelas[i] > 180) ? estrelas[i] : 0;
+    fita.setPixelColor(i, fita.Color(estrelas[i] / 4 + star / 3, star / 4, estrelas[i] / 2 + star / 2));
   }
 }
-void neon() {
+
+void neon(unsigned long tempo) {
   uint16_t coresNeon[3] = {0, 21845, 43690};
-  float pulso = (sin(millis() / 200.0) * 0.4) + 0.6;
+  float pulso = (sin(tempo / 200.0) * 0.4) + 0.6;
   for (int i = 0; i < NUMPIXELS; i++) {
-    int bloco = (i / 20 + fase) % 3;
-    uint16_t h = coresNeon[bloco] + hueGlobal;
-    uint8_t  v = constrain(pulso * 255, 0, 255);
-    fita.setPixelColor(i, fita.gamma32(fita.ColorHSV(h, 255, v)));
+    fita.setPixelColor(i, fita.gamma32(fita.ColorHSV(coresNeon[(i / 20 + fase) % 3] + hueGlobal, 255, constrain(pulso * 255, 0, 255))));
   }
   if (random(100) > 97) { fase = (fase + 1) % 3; hueGlobal += 2000; }
 }
-void neveiro(unsigned long tempo) {
+
+void blizzard(unsigned long tempo) {
   for (int i = 0; i < NUMPIXELS; i++) {
     float x = (float)i / NUMPIXELS;
-    float onda = sin(x * 5.0 + tempo / 2000.0) * 0.3
-               + sin(x * 9.0 - tempo / 1500.0) * 0.2
-               + 0.5;
-    int brilho = constrain(onda * 180, 30, 210);
+    int brilho = constrain((sin(x * 5.0 + tempo / 2000.0) * 0.3 + sin(x * 9.0 - tempo / 1500.0) * 0.2 + 0.5) * 180, 30, 210);
     fita.setPixelColor(i, fita.Color(brilho * 0.85, brilho * 0.92, brilho));
   }
 }
