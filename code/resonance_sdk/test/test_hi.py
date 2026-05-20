@@ -5,19 +5,26 @@ import random
 import sys
 import time
 
-SYMBOLS = [
-    "CHLADNI_CROSS",
-    "CHLADNI_STAR_4",
-    "CHLADNI_RING",
-    "CHLADNI_DIAGONAL",
-    "CHLADNI_GRID_2x2",
-    "CHLADNI_STAR_8",
-    "CHLADNI_SPIRAL",
-    "CHLADNI_FLOWER_6",
-    "CHLADNI_BUTTERFLY",
-    "CHLADNI_MANDALA",
-    "CHLADNI_TORUS_KNOT",
-]
+import json
+import glob
+
+def load_hi_symbols():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    symbols_dir = os.path.normpath(os.path.join(base_dir, "..", "..", "..", "..", "SWAID-ESIS", "dictionary"))
+    json_files = glob.glob(os.path.join(symbols_dir, "CHLADNI_*.json"))
+    symbols = []
+    for f_path in json_files:
+        try:
+            with open(f_path, "r") as f:
+                data = json.load(f)
+                if "display_name" in data:
+                    symbols.append(data["display_name"])
+        except Exception:
+            pass
+    symbols.sort()
+    return symbols if symbols else ["CHLADNI_DEFAULT"]
+
+SYMBOLS = load_hi_symbols()
 TRANSITIONS = ["SLOW", "MEDIUM", "FAST"]
 MUSIC_NOTES      = list(range(1, 13))       # 1–12
 MUSIC_RHYTHMS    = ["sequence_1", "sequence_2", "sequence_3", "sequence_4"]
