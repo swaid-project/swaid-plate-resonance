@@ -17,9 +17,8 @@ int main() {
     const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(deviceIdx);
 
     if (NUM_CHANNELS > deviceInfo->maxOutputChannels) {
-        std::cerr << "Error: Device " << deviceIdx << " only supports " 
-                << deviceInfo->maxOutputChannels << " channels. Cannot use 8.\n";
-        return -1; 
+        std::cout << "WARNING: Device " << deviceIdx << " reports only " 
+                  << deviceInfo->maxOutputChannels << " channels. Attempting to force 8 channels anyway...\n";
     }
     
     PaStreamParameters outputParams;

@@ -39,6 +39,8 @@ set(IMGUI_SOURCES
     ${THIRD_PARTY_DIR}/imgui_widgets.cpp
     ${THIRD_PARTY_DIR}/imgui_impl_glfw.cpp
     ${THIRD_PARTY_DIR}/imgui_impl_opengl3.cpp
+    ${THIRD_PARTY_DIR}/implot.cpp
+    ${THIRD_PARTY_DIR}/implot_items.cpp
 )
 
 set(CORE_SOURCES

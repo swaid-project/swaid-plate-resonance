@@ -41,10 +41,33 @@ void TunerPanels::draw_soundcard_config(TunerApp* app) {
         for (int i = 0; i < 8; ++i) app->sync_channel(i);
     }
     
-    if (ImGui::BeginTable("SoundcardChannels", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+    ImGui::Separator();
+    ImGui::TextColored(ImVec4(1, 1, 0, 1), "Master Controls:");
+    ImGui::SetNextItemWidth(200);
+    if (ImGui::SliderFloat("Master Frequency (Hz)", &app->master_freq_, 20.0f, 20000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) {
+        // TunerApp::update_texture handles the per-channel sync if auto_sync is on
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(100);
+    ImGui::InputFloat("##MasterFreqInput", &app->master_freq_, 1.0f, 10.0f, "%.1f");
+
+    if (ImGui::CollapsingHeader("Hardware Mapping (Sim -> Soundcard)", ImGuiTreeNodeFlags_None)) {
+        ImGui::Text("Map the 4 simulation transducers to physical soundcard channels:");
+        for (int i = 0; i < 4; ++i) {
+            ImGui::PushID(i + 100);
+            char label[32]; sprintf(label, "Transducer %d -> Ch", i + 1);
+            ImGui::SetNextItemWidth(80);
+            ImGui::Combo(label, &app->transducer_to_channel_map_[i], "0\0 1\0 2\0 3\0 4\0 5\0 6\0 7\0");
+            ImGui::PopID();
+            if (i < 3) ImGui::SameLine();
+        }
+    }
+    
+    if (ImGui::BeginTable("SoundcardChannels", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("Ch", ImGuiTableColumnFlags_WidthFixed, 30.0f);
-        ImGui::TableSetupColumn("Freq (Hz)");
-        ImGui::TableSetupColumn("Amp (0-1)");
+        ImGui::TableSetupColumn("Follow Master", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+        ImGui::TableSetupColumn("Frequency (Hz)");
+        ImGui::TableSetupColumn("Amplitude (0-1)");
         ImGui::TableSetupColumn("Phase (deg)");
         ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 60.0f);
         ImGui::TableHeadersRow();
@@ -55,26 +78,48 @@ void TunerPanels::draw_soundcard_config(TunerApp* app) {
             
             ImGui::TableSetColumnIndex(0);
             ImGui::Text("%d", i);
-            
+
             ImGui::TableSetColumnIndex(1);
+            if (ImGui::Checkbox("##Follow", &app->channels_[i].follow_master)) {
+                if (app->channels_[i].follow_master) {
+                    app->channels_[i].freq = app->master_freq_;
+                    if (app->auto_sync_) app->sync_channel(i);
+                }
+            }
+            
+            ImGui::TableSetColumnIndex(2);
+            ImGui::BeginDisabled(app->channels_[i].follow_master);
             ImGui::SetNextItemWidth(-1);
             if (ImGui::SliderFloat("##Freq", &app->channels_[i].freq, 20.0f, 20000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) {
                 if (app->auto_sync_) app->sync_channel(i);
             }
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputFloat("##FreqInput", &app->channels_[i].freq, 1.0f, 10.0f, "%.1f")) {
+                if (app->auto_sync_) app->sync_channel(i);
+            }
+            ImGui::EndDisabled();
             
-            ImGui::TableSetColumnIndex(2);
+            ImGui::TableSetColumnIndex(3);
             ImGui::SetNextItemWidth(-1);
             if (ImGui::SliderFloat("##Amp", &app->channels_[i].amp, 0.0f, 1.0f, "%.3f")) {
                 if (app->auto_sync_) app->sync_channel(i);
             }
-            
-            ImGui::TableSetColumnIndex(3);
             ImGui::SetNextItemWidth(-1);
-            if (ImGui::SliderFloat("##Phase", &app->channels_[i].phase, 0.0f, 360.0f, "%.1f")) {
+            if (ImGui::InputFloat("##AmpInput", &app->channels_[i].amp, 0.001f, 0.01f, "%.3f")) {
                 if (app->auto_sync_) app->sync_channel(i);
             }
             
             ImGui::TableSetColumnIndex(4);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::SliderFloat("##Phase", &app->channels_[i].phase, 0.0f, 360.0f, "%.1f")) {
+                if (app->auto_sync_) app->sync_channel(i);
+            }
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputFloat("##PhaseInput", &app->channels_[i].phase, 1.0f, 10.0f, "%.1f")) {
+                if (app->auto_sync_) app->sync_channel(i);
+            }
+            
+            ImGui::TableSetColumnIndex(5);
             if (ImGui::Button("Sync")) {
                 app->sync_channel(i);
             }
@@ -102,51 +147,64 @@ void TunerPanels::draw_led_config(TunerApp* app) {
     }
     
     ImGui::Separator();
-    ImGui::Text("Common Effects:");
-    const char* names[] = {"Rainbow", "Breathing", "Scanner", "Matrix", "Galaxy"};
-    int ids[] = {0, 3, 7, 14, 17};
-    for (int i=0; i<5; ++i) {
-        if (ImGui::Button(names[i])) {
-            app->selected_led_effect_ = ids[i];
-            app->sync_led(ids[i]);
+    ImGui::Text("All Effects Shortcut Grid:");
+    for (int i = 0; i < 20; ++i) {
+        char buf[8]; sprintf(buf, "%d", i);
+        bool is_selected = (app->selected_led_effect_ == i);
+        if (is_selected) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.2f, 1.0f));
+        
+        if (ImGui::Button(buf, ImVec2(40, 40))) {
+            app->selected_led_effect_ = i;
+            app->sync_led(i);
         }
-        if (i < 4) ImGui::SameLine();
+        
+        if (is_selected) ImGui::PopStyleColor();
+        if ((i + 1) % 5 != 0) ImGui::SameLine();
     }
 }
 
 void TunerPanels::draw_symbol_trigger(TunerApp* app) {
-    static std::vector<std::string> symbol_files;
-    static int selected_file_idx = 0;
+    static char path_buf[512];
+    static bool first_run = true;
+    if (first_run) {
+        strncpy(path_buf, app->symbol_file_path_.c_str(), sizeof(path_buf));
+        first_run = false;
+    }
+
     static nlohmann::json current_symbols;
-    
-    auto refresh_files = [&]() {
-        symbol_files.clear();
-        try {
-            for (const auto& entry : std::filesystem::directory_iterator("../simulator/sim/symbols")) {
-                if (entry.path().extension() == ".json") symbol_files.push_back(entry.path().filename().string());
+    static std::string loaded_path = "";
+
+    ImGui::TextColored(ImVec4(1, 1, 0, 1), "Symbol Dictionary Selection:");
+    ImGui::InputText("File Path", path_buf, sizeof(path_buf));
+    app->symbol_file_path_ = path_buf;
+
+    if (ImGui::Button("Load Dictionary from Path", ImVec2(-1, 30)) || (loaded_path != app->symbol_file_path_ && current_symbols.is_null())) {
+        std::ifstream f(app->symbol_file_path_);
+        if (f.is_open()) {
+            try {
+                current_symbols = nlohmann::json::parse(f);
+                loaded_path = app->symbol_file_path_;
+            } catch (...) {
+                current_symbols = nullptr;
+                loaded_path = "ERROR";
             }
-            std::sort(symbol_files.rbegin(), symbol_files.rend());
-        } catch (...) {}
-    };
-    
-    if (symbol_files.empty()) refresh_files();
-    
-    if (ImGui::Button("Refresh Symbol Files")) refresh_files();
-    
-    if (!symbol_files.empty()) {
-        if (ImGui::BeginCombo("Dictionary", symbol_files[selected_file_idx].c_str())) {
-            for (int i=0; i<symbol_files.size(); ++i) {
-                if (ImGui::Selectable(symbol_files[i].c_str(), i == selected_file_idx)) {
-                    selected_file_idx = i;
-                    std::ifstream f("../simulator/sim/symbols/" + symbol_files[i]);
-                    current_symbols = nlohmann::json::parse(f);
-                }
-            }
-            ImGui::EndCombo();
+        } else {
+            current_symbols = nullptr;
+            loaded_path = "NOT_FOUND";
         }
     }
-    
-    if (!current_symbols.is_null()) {
+
+    if (loaded_path == "ERROR") {
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Error: Failed to parse JSON file.");
+    } else if (loaded_path == "NOT_FOUND") {
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Error: File not found at specified path.");
+    } else if (!current_symbols.is_null()) {
+        ImGui::TextColored(ImVec4(0, 1, 0, 1), "Dictionary Loaded: %zu symbols found.", current_symbols.is_array() ? current_symbols.size() : 0);
+    }
+
+    ImGui::Separator();
+
+    if (!current_symbols.is_null() && current_symbols.is_array()) {
         ImGui::Text("Trigger Symbols:");
         if (ImGui::BeginTable("SymbolList", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(0, 400))) {
             ImGui::TableSetupColumn("Symbol ID");
@@ -156,11 +214,24 @@ void TunerPanels::draw_symbol_trigger(TunerApp* app) {
             for (auto& sym : current_symbols) {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                ImGui::Text("%s", sym["id"].get<std::string>().c_str());
+                
+                std::string id_str;
+                if (sym.contains("display_name")) {
+                    id_str = sym["display_name"].get<std::string>();
+                } else if (sym.contains("id")) {
+                    if (sym["id"].is_string()) {
+                        id_str = sym["id"].get<std::string>();
+                    } else if (sym["id"].is_number()) {
+                        id_str = std::to_string(sym["id"].get<int>());
+                    }
+                }
+
+                ImGui::Text("%s", id_str.c_str());
                 
                 ImGui::TableSetColumnIndex(1);
-                if (ImGui::Button(("Trigger##" + sym["id"].get<std::string>()).c_str())) {
-                    app->trigger_symbol(sym["id"].get<std::string>(), app->selected_led_effect_);
+                if (ImGui::Button(("Trigger##" + id_str).c_str())) {
+                    app->trigger_symbol(id_str, app->selected_led_effect_);
+                    app->load_symbol_to_manual(sym);
                 }
             }
             ImGui::EndTable();

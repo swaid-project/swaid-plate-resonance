@@ -26,8 +26,16 @@ std::map<std::string, json> loadCatalogue(const std::string& file) {
         std::cout << "Found JSON Array with " << root.size() << " elements.\n";
         for (const auto& entry : root) {
             if (entry.contains("id")) {
-                std::string symbolId = entry["id"].get<std::string>();
-                catalogue[symbolId] = entry;
+                std::string symbolId;
+                if (entry["id"].is_string()) {
+                    symbolId = entry["id"].get<std::string>();
+                } else if (entry["id"].is_number()) {
+                    symbolId = std::to_string(entry["id"].get<int>());
+                }
+                
+                if (!symbolId.empty()) {
+                    catalogue[symbolId] = entry;
+                }
             } 
         }
     }
