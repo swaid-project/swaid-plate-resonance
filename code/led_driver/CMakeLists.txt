@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories(include)
 
-set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 include_directories(${THIRD_PARTY_DIR})
 
 file(GLOB_RECURSE LED_SOURCES "src/*.cpp")
@@ -16,7 +16,7 @@ file(GLOB_RECURSE LED_SOURCES "src/*.cpp")
 # Note: This is a placeholder. For embedded targets like Pico, 
 # a toolchain file or PlatformIO is typically used.
 if(LED_SOURCES)
-    add_executable(led_driver ${LED_SOURCES})
+    add_library(led_driver STATIC ${LED_SOURCES})
 endif()
 
 # ── Compiler Settings ────────────────────────────────────────────────────────

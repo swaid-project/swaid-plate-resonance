@@ -138,27 +138,12 @@ int audioCallback(const void *inputBuffer, void *outputBuffer,
 // --- Audio Device Selection 
 int selectAudioDevice() {
     int numDevices = Pa_GetDeviceCount();
-    if (numDevices < 0) {
-        std::cerr << "PortAudio error: Pa_GetDeviceCount returned " << numDevices << "\n";
-        return -1;
-    }
-
-    std::cout << "\n--- Audio Device Diagnostic ---\n";
-    std::cout << "Total PortAudio devices found: " << numDevices << "\n";
-
+    std::cout << "\nAvailable audio devices:\n";
     for (int i = 0; i < numDevices; i++) {
         const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
-        const PaHostApiInfo* hostApi = Pa_GetHostApiInfo(info->hostApi);
-        
-        std::cout << "  [" << i << "] " << info->name << "\n";
-        std::cout << "      Host API: " << hostApi->name << "\n";
-        std::cout << "      Max Out Channels: " << info->maxOutputChannels << "\n";
-        std::cout << "      Default Sample Rate: " << info->defaultSampleRate << " Hz\n";
-        
-        if (info->maxOutputChannels >= 8) {
-            std::cout << "      >>> COMPATIBLE (8+ channels) <<<\n";
-        }
-        std::cout << "--------------------------------\n";
+        if (info->maxOutputChannels >= NUM_CHANNELS)
+            std::cout << "  [" << i << "] " << info->name 
+                      << " (out: " << info->maxOutputChannels << "ch)\n";
     }
     std::cout << "Select device index: ";
     int choice; std::cin >> choice;

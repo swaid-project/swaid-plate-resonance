@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include_directories(include)
 include_directories(../soundcard/include)
 include_directories(../led_driver/include)
+include_directories(../third_party)
+include_directories(../third_party/imgui)
 link_directories(lib)
 
 file(GLOB CORE_SOURCES 

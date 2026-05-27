@@ -12,7 +12,7 @@ add_definitions(-DGL_GLEXT_PROTOTYPES)
 # ── Paths ───────────────────────────────────────────────────────────────────
 set(SIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../simulator)
 set(SDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../resonance_sdk)
-set(THIRD_PARTY_DIR ${SIM_DIR}/third_party)
+set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # ── GLFW ────────────────────────────────────────────────────────────────────
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -30,17 +30,20 @@ include_directories(${SDK_DIR}/include)
 include_directories(${THIRD_PARTY_DIR}/eigen)
 include_directories(${THIRD_PARTY_DIR})
 include_directories(${THIRD_PARTY_DIR}/glfw/include)
+include_directories(${THIRD_PARTY_DIR}/imgui)
+include_directories(${THIRD_PARTY_DIR}/imgui/backends)
+include_directories(${THIRD_PARTY_DIR}/implot)
 
 # ── Sources ─────────────────────────────────────────────────────────────────
 set(IMGUI_SOURCES
-    ${THIRD_PARTY_DIR}/imgui.cpp
-    ${THIRD_PARTY_DIR}/imgui_draw.cpp
-    ${THIRD_PARTY_DIR}/imgui_tables.cpp
-    ${THIRD_PARTY_DIR}/imgui_widgets.cpp
-    ${THIRD_PARTY_DIR}/imgui_impl_glfw.cpp
-    ${THIRD_PARTY_DIR}/imgui_impl_opengl3.cpp
-    ${THIRD_PARTY_DIR}/implot.cpp
-    ${THIRD_PARTY_DIR}/implot_items.cpp
+    ${THIRD_PARTY_DIR}/imgui/imgui.cpp
+    ${THIRD_PARTY_DIR}/imgui/imgui_draw.cpp
+    ${THIRD_PARTY_DIR}/imgui/imgui_tables.cpp
+    ${THIRD_PARTY_DIR}/imgui/imgui_widgets.cpp
+    ${THIRD_PARTY_DIR}/imgui/backends/imgui_impl_glfw.cpp
+    ${THIRD_PARTY_DIR}/imgui/backends/imgui_impl_opengl3.cpp
+    ${THIRD_PARTY_DIR}/implot/implot.cpp
+    ${THIRD_PARTY_DIR}/implot/implot_items.cpp
 )
 
 set(CORE_SOURCES
