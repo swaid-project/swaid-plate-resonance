@@ -43,33 +43,60 @@ void TunerPanels::draw_soundcard_config(TunerApp* app) {
     
     ImGui::Separator();
     ImGui::TextColored(ImVec4(1, 1, 0, 1), "Master Controls:");
+    
+    // Master Frequency
     ImGui::SetNextItemWidth(200);
-    if (ImGui::SliderFloat("Master Frequency (Hz)", &app->master_freq_, 20.0f, 20000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) {
-        // TunerApp::update_texture handles the per-channel sync if auto_sync is on
-    }
+    ImGui::SliderFloat("Master Freq (Hz)", &app->master_freq_, 20.0f, 20000.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(100);
-    ImGui::InputFloat("##MasterFreqInput", &app->master_freq_, 1.0f, 10.0f, "%.1f");
+    if (ImGui::Button("-##FreqMinus", ImVec2(30, 0))) { app->master_freq_ = std::max(20.0f, app->master_freq_ - app->master_freq_step_); }
+    ImGui::SameLine();
+    if (ImGui::Button("+##FreqPlus", ImVec2(30, 0))) { app->master_freq_ = std::min(20000.0f, app->master_freq_ + app->master_freq_step_); }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(100); // Widened
+    ImGui::InputFloat("##MFreqIn", &app->master_freq_, 0, 0, "%.1f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80);
+    ImGui::InputFloat("Step (Hz)", &app->master_freq_step_, 0.1f, 1.0f, "%.1f");
+    
+    // Master Amplitude
+    ImGui::SetNextItemWidth(200);
+    ImGui::SliderFloat("Master Amp (0-1)", &app->master_amp_, 0.0f, 1.0f, "%.3f");
+    ImGui::SameLine();
+    if (ImGui::Button("-##AmpMinus", ImVec2(30, 0))) { app->master_amp_ = std::max(0.0f, app->master_amp_ - app->master_amp_step_); }
+    ImGui::SameLine();
+    if (ImGui::Button("+##AmpPlus", ImVec2(30, 0))) { app->master_amp_ = std::min(1.0f, app->master_amp_ + app->master_amp_step_); }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(100); // Widened
+    ImGui::InputFloat("##MAmpIn", &app->master_amp_, 0, 0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80);
+    ImGui::InputFloat("Step (Amp)", &app->master_amp_step_, 0.001f, 0.01f, "%.3f");
 
-    if (ImGui::CollapsingHeader("Hardware Mapping (Sim -> Soundcard)", ImGuiTreeNodeFlags_None)) {
-        ImGui::Text("Map the 4 simulation transducers to physical soundcard channels:");
+    if (ImGui::CollapsingHeader("Hardware Mapping (Sim Transducer -> Soundcard Ch)", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Columns(4, "MappingColumns", false);
         for (int i = 0; i < 4; ++i) {
             ImGui::PushID(i + 100);
-            char label[32]; sprintf(label, "Transducer %d -> Ch", i + 1);
-            ImGui::SetNextItemWidth(80);
-            ImGui::Combo(label, &app->transducer_to_channel_map_[i], "0\0 1\0 2\0 3\0 4\0 5\0 6\0 7\0");
+            ImGui::Text("Sim T%d", i + 1);
+            ImGui::SetNextItemWidth(60);
+            if (ImGui::Combo("##Mapping", &app->transducer_to_channel_map_[i], "0\0 1\0 2\0 3\0 4\0 5\0 6\0 7\0")) {
+                // Mapping changed
+            }
             ImGui::PopID();
-            if (i < 3) ImGui::SameLine();
+            ImGui::NextColumn();
         }
+        ImGui::Columns(1);
     }
     
-    if (ImGui::BeginTable("SoundcardChannels", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-        ImGui::TableSetupColumn("Ch", ImGuiTableColumnFlags_WidthFixed, 30.0f);
-        ImGui::TableSetupColumn("Follow Master", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+    ImGui::Spacing();
+    
+    if (ImGui::BeginTable("SoundcardChannels", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("Ch", ImGuiTableColumnFlags_WidthFixed, 25.0f);
+        ImGui::TableSetupColumn("F-Freq", ImGuiTableColumnFlags_WidthFixed, 45.0f);
+        ImGui::TableSetupColumn("F-Amp", ImGuiTableColumnFlags_WidthFixed, 45.0f);
         ImGui::TableSetupColumn("Frequency (Hz)");
         ImGui::TableSetupColumn("Amplitude (0-1)");
         ImGui::TableSetupColumn("Phase (deg)");
-        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 50.0f);
         ImGui::TableHeadersRow();
 
         for (int i = 0; i < 8; ++i) {
@@ -80,46 +107,56 @@ void TunerPanels::draw_soundcard_config(TunerApp* app) {
             ImGui::Text("%d", i);
 
             ImGui::TableSetColumnIndex(1);
-            if (ImGui::Checkbox("##Follow", &app->channels_[i].follow_master)) {
-                if (app->channels_[i].follow_master) {
+            if (ImGui::Checkbox("##FF", &app->channels_[i].follow_master_freq)) {
+                if (app->channels_[i].follow_master_freq) {
                     app->channels_[i].freq = app->master_freq_;
                     if (app->auto_sync_) app->sync_channel(i);
                 }
             }
             
             ImGui::TableSetColumnIndex(2);
-            ImGui::BeginDisabled(app->channels_[i].follow_master);
+            if (ImGui::Checkbox("##FA", &app->channels_[i].follow_master_amp)) {
+                if (app->channels_[i].follow_master_amp) {
+                    app->channels_[i].amp = app->master_amp_;
+                    if (app->auto_sync_) app->sync_channel(i);
+                }
+            }
+            
+            ImGui::TableSetColumnIndex(3);
+            ImGui::BeginDisabled(app->channels_[i].follow_master_freq);
             ImGui::SetNextItemWidth(-1);
-            if (ImGui::SliderFloat("##Freq", &app->channels_[i].freq, 20.0f, 20000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) {
+            if (ImGui::SliderFloat("##FreqSlider", &app->channels_[i].freq, 20.0f, 20000.0f, "%.1f", ImGuiSliderFlags_Logarithmic)) {
                 if (app->auto_sync_) app->sync_channel(i);
             }
             ImGui::SetNextItemWidth(-1);
-            if (ImGui::InputFloat("##FreqInput", &app->channels_[i].freq, 1.0f, 10.0f, "%.1f")) {
+            if (ImGui::InputFloat("##FreqInput", &app->channels_[i].freq, 0, 0, "%.1f")) {
                 if (app->auto_sync_) app->sync_channel(i);
             }
             ImGui::EndDisabled();
             
-            ImGui::TableSetColumnIndex(3);
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::SliderFloat("##Amp", &app->channels_[i].amp, 0.0f, 1.0f, "%.3f")) {
-                if (app->auto_sync_) app->sync_channel(i);
-            }
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::InputFloat("##AmpInput", &app->channels_[i].amp, 0.001f, 0.01f, "%.3f")) {
-                if (app->auto_sync_) app->sync_channel(i);
-            }
-            
             ImGui::TableSetColumnIndex(4);
+            ImGui::BeginDisabled(app->channels_[i].follow_master_amp);
             ImGui::SetNextItemWidth(-1);
-            if (ImGui::SliderFloat("##Phase", &app->channels_[i].phase, 0.0f, 360.0f, "%.1f")) {
+            if (ImGui::SliderFloat("##AmpSlider", &app->channels_[i].amp, 0.0f, 1.0f, "%.3f")) {
                 if (app->auto_sync_) app->sync_channel(i);
             }
             ImGui::SetNextItemWidth(-1);
-            if (ImGui::InputFloat("##PhaseInput", &app->channels_[i].phase, 1.0f, 10.0f, "%.1f")) {
+            if (ImGui::InputFloat("##AmpInput", &app->channels_[i].amp, 0, 0, "%.3f")) {
                 if (app->auto_sync_) app->sync_channel(i);
             }
+            ImGui::EndDisabled();
             
             ImGui::TableSetColumnIndex(5);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::SliderFloat("##PhaseSlider", &app->channels_[i].phase, 0.0f, 360.0f, "%.1f")) {
+                if (app->auto_sync_) app->sync_channel(i);
+            }
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputFloat("##PhaseInput", &app->channels_[i].phase, 0, 0, "%.1f")) {
+                if (app->auto_sync_) app->sync_channel(i);
+            }
+            
+            ImGui::TableSetColumnIndex(6);
             if (ImGui::Button("Sync")) {
                 app->sync_channel(i);
             }
@@ -130,11 +167,42 @@ void TunerPanels::draw_soundcard_config(TunerApp* app) {
     }
     
     ImGui::Separator();
-    if (ImGui::Button("MASTER MUTE", ImVec2(120, 40))) app->sync_master(true, false);
+    
+    // Mute Button Feedback (Safe Push/Pop)
+    bool pushed_color = false;
+    if (app->is_muted_) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+        pushed_color = true;
+    }
+    
+    if (ImGui::Button("MASTER MUTE", ImVec2(140, 40))) {
+        app->sync_master(true, false);
+    }
+    
+    if (pushed_color) {
+        ImGui::PopStyleColor(2);
+        pushed_color = false;
+    }
+
     ImGui::SameLine();
-    if (ImGui::Button("UNMUTE", ImVec2(120, 40))) app->sync_master(false, false);
+    
+    if (ImGui::Button("UNMUTE ALL", ImVec2(140, 40))) {
+        app->sync_master(false, false);
+    }
+    
     ImGui::SameLine();
-    if (ImGui::Button("RESET ALL", ImVec2(120, 40))) app->sync_master(false, true);
+    
+    if (ImGui::Button("RESET ALL", ImVec2(140, 40))) {
+        app->sync_master(false, true);
+        ImGui::OpenPopup("ResetFeedback");
+    }
+    
+    if (ImGui::BeginPopup("ResetFeedback")) {
+        ImGui::Text("Generators Reset to Defaults!");
+        if (ImGui::Button("OK")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
 }
 
 void TunerPanels::draw_led_config(TunerApp* app) {
