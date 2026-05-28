@@ -114,12 +114,20 @@ void TunerApp::run() {
 void TunerApp::update_texture() {
   // Sync follow master channels
   for (int i = 0; i < 8; ++i) {
-      if (channels_[i].follow_master) {
+      bool changed = false;
+      if (channels_[i].follow_master_freq) {
           if (channels_[i].freq != master_freq_) {
               channels_[i].freq = master_freq_;
-              if (auto_sync_) sync_channel(i);
+              changed = true;
           }
       }
+      if (channels_[i].follow_master_amp) {
+          if (channels_[i].amp != master_amp_) {
+              channels_[i].amp = master_amp_;
+              changed = true;
+          }
+      }
+      if (changed && auto_sync_) sync_channel(i);
   }
 
   // Update physics transducers based on mapped channels for simulation
@@ -237,7 +245,8 @@ void TunerApp::load_symbol_to_manual(const nlohmann::json& sym) {
             channels_[app_ch].freq = ch_data.value("frequency_hz", 440.0f);
             channels_[app_ch].amp = ch_data.value("amplitude", 0.0f);
             channels_[app_ch].phase = (float)ch_data.value("phase_deg", 0.0);
-            channels_[app_ch].follow_master = false; // Symbol loads specific frequency
+            channels_[app_ch].follow_master_freq = false; 
+            channels_[app_ch].follow_master_amp = false;
 
             // Load Transducer Positions if app_ch is within simulation transducers [0-3]
             if (app_ch < (int)ctx_.transducers.size()) {
@@ -255,6 +264,7 @@ void TunerApp::sync_master(bool mute, bool reset) {
     char buf[512];
     format_master_control(mute, reset, buf, 512);
     send_zmq(buf);
+    if (!reset) is_muted_ = mute;
 }
 
 } // namespace chladni

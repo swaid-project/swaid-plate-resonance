@@ -16,7 +16,8 @@ struct SoundcardChannel {
     float freq = 440.0f;
     float amp = 0.0f;
     float phase = 0.0f;
-    bool follow_master = false;
+    bool follow_master_freq = false;
+    bool follow_master_amp = false;
 };
 
 class TunerApp {
@@ -40,6 +41,10 @@ class TunerApp {
   std::vector<SoundcardChannel> channels_;
   std::vector<int> transducer_to_channel_map_; // Maps transducer index [0-3] to channel index [0-7]
   float master_freq_ = 440.0f;
+  float master_amp_ = 0.0f;
+  float master_freq_step_ = 10.0f;
+  float master_amp_step_ = 0.01f;
+  bool is_muted_ = false;
   bool auto_sync_ = true;
   int selected_led_effect_ = 0;
   std::string symbol_file_path_ = "/home/miguel/Documents/ELETRO/4ANO 2S/ESIS/swaid-plate-resonance/code/simulator/sim/symbols/master_symbols.json";
