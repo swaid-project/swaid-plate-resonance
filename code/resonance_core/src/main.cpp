@@ -17,9 +17,8 @@ int main() {
     const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(deviceIdx);
 
     if (NUM_CHANNELS > deviceInfo->maxOutputChannels) {
-        std::cerr << "Error: Device " << deviceIdx << " only supports " 
-                << deviceInfo->maxOutputChannels << " channels. Cannot use 8.\n";
-        return -1; 
+        std::cout << "WARNING: Device " << deviceIdx << " reports only " 
+                  << deviceInfo->maxOutputChannels << " channels. Attempting to force 8 channels anyway...\n";
     }
     
     PaStreamParameters outputParams;
@@ -31,16 +30,6 @@ int main() {
     Pa_OpenStream(&stream, nullptr, &outputParams, SAMPLE_RATE, FRAMES_PER_BUFFER, paNoFlag, audioCallback, nullptr);
 
     Pa_StartStream(stream);
-
-    #ifdef DEBUG
-        std::cout << "Select Mode:\n[1] GUI\n[2] TUI\n[3] Headless (Official)\nChoice: ";
-        int choice; 
-        std::cin >> choice;
-
-        if (choice == 1) runGUI();
-        else if (choice == 2) runTUI();
-        else runHeadless();
-    #endif // DEBUG
 
     runHeadless();
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(Soundcard CXX)
+project(ResonanceTuner CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,6 +10,8 @@ find_package(Threads REQUIRED)
 add_definitions(-DGL_GLEXT_PROTOTYPES)
 
 # ── Paths ───────────────────────────────────────────────────────────────────
+set(SIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../simulator)
+set(SDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../resonance_sdk)
 set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # ── GLFW ────────────────────────────────────────────────────────────────────
@@ -22,10 +24,15 @@ add_subdirectory(${THIRD_PARTY_DIR}/glfw glfw_build)
 
 # ── Includes ────────────────────────────────────────────────────────────────
 include_directories(include)
+link_directories(lib)
+include_directories(${SIM_DIR}/src)
+include_directories(${SDK_DIR}/include)
+include_directories(${THIRD_PARTY_DIR}/eigen)
 include_directories(${THIRD_PARTY_DIR})
 include_directories(${THIRD_PARTY_DIR}/glfw/include)
 include_directories(${THIRD_PARTY_DIR}/imgui)
 include_directories(${THIRD_PARTY_DIR}/imgui/backends)
+include_directories(${THIRD_PARTY_DIR}/implot)
 
 # ── Sources ─────────────────────────────────────────────────────────────────
 set(IMGUI_SOURCES
@@ -35,30 +42,38 @@ set(IMGUI_SOURCES
     ${THIRD_PARTY_DIR}/imgui/imgui_widgets.cpp
     ${THIRD_PARTY_DIR}/imgui/backends/imgui_impl_glfw.cpp
     ${THIRD_PARTY_DIR}/imgui/backends/imgui_impl_opengl3.cpp
+    ${THIRD_PARTY_DIR}/implot/implot.cpp
+    ${THIRD_PARTY_DIR}/implot/implot_items.cpp
 )
 
-set(RX_SOURCES
-    rx_driver.cpp
+set(CORE_SOURCES
+    ${SIM_DIR}/src/core/physics.cpp
+    ${SIM_DIR}/src/core/analyzer.cpp
+)
+
+set(TUNER_SOURCES
+    src/main.cpp
+    src/gui/tuner_app.cpp
+    src/gui/tuner_panels.cpp
+    ${CORE_SOURCES}
     ${IMGUI_SOURCES}
+    ${SDK_DIR}/src/mqdriver_tx.cpp
 )
 
-add_executable(rx_driver ${RX_SOURCES})
+# ── Target ──────────────────────────────────────────────────────────────────
+add_executable(resonance_tuner ${TUNER_SOURCES})
 
-# ── Linking ──────────────────────────────────────────────────────────────────
-target_link_libraries(rx_driver
+target_link_libraries(resonance_tuner
     glfw
     ${OPENGL_LIBRARIES}
     Threads::Threads
-    portaudio
     zmq
-    jsoncpp
     dl
 )
 
 # ── Compiler Settings ────────────────────────────────────────────────────────
-
 if(MSVC)
-    target_compile_options(rx_driver PRIVATE /W4)
+    target_compile_options(resonance_tuner PRIVATE /W4)
 else()
-    target_compile_options(rx_driver PRIVATE -Wall -Wextra -Wpedantic -O3)
+    target_compile_options(resonance_tuner PRIVATE -Wall -Wextra -Wpedantic -O3)
 endif()

@@ -13,7 +13,8 @@
 
 // --- JSON related
 #include <map>
-#include <jsoncpp/json/json.h>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 // --- 7.1 characteristics
 extern const int NUM_CHANNELS   ; 
@@ -33,7 +34,6 @@ struct Generator {
 };
 
 // --- Audio related
-#include <GLFW/glfw3.h>
 #include <portaudio.h>
 
 // --- Global state 
@@ -51,7 +51,7 @@ extern const int FRAMES_PER_BUFFER;
 int fadeDurationMs(const std::string& t);
 
 // --- Sending the pattern to the soundcard generators
-void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std::string& symbol_id, const std::string& fade_transition);
+void applyPattern(const std::map<std::string, json>& catalogue, const std::string& symbol_id, const std::string& fade_transition);
 
 // --- Helper function to reset all generators
 void resetGenerators();

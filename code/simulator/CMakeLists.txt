@@ -17,7 +17,7 @@ add_definitions(-DGL_GLEXT_PROTOTYPES)
 
 # ── Third Party ──────────────────────────────────────────────────────────────
 
-set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # Eigen3 (Header only, local)
 include_directories(${THIRD_PARTY_DIR}/eigen)
@@ -32,25 +32,29 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
 
-add_subdirectory(${THIRD_PARTY_DIR}/glfw)
+add_subdirectory(${THIRD_PARTY_DIR}/glfw glfw_build)
 include_directories(${THIRD_PARTY_DIR}/glfw/include)
 
 # ImGui
-include_directories(${THIRD_PARTY_DIR})
+include_directories(${THIRD_PARTY_DIR}/imgui)
+include_directories(${THIRD_PARTY_DIR}/imgui/backends)
 
 set(IMGUI_SOURCES
-    ${THIRD_PARTY_DIR}/imgui.cpp
-    ${THIRD_PARTY_DIR}/imgui_draw.cpp
-    ${THIRD_PARTY_DIR}/imgui_tables.cpp
-    ${THIRD_PARTY_DIR}/imgui_widgets.cpp
-    ${THIRD_PARTY_DIR}/imgui_impl_glfw.cpp
-    ${THIRD_PARTY_DIR}/imgui_impl_opengl3.cpp
+    ${THIRD_PARTY_DIR}/imgui/imgui.cpp
+    ${THIRD_PARTY_DIR}/imgui/imgui_draw.cpp
+    ${THIRD_PARTY_DIR}/imgui/imgui_tables.cpp
+    ${THIRD_PARTY_DIR}/imgui/imgui_widgets.cpp
+    ${THIRD_PARTY_DIR}/imgui/backends/imgui_impl_glfw.cpp
+    ${THIRD_PARTY_DIR}/imgui/backends/imgui_impl_opengl3.cpp
 )
 
 set(IMPLOT_SOURCES
-    ${THIRD_PARTY_DIR}/implot.cpp
-    ${THIRD_PARTY_DIR}/implot_items.cpp
+    ${THIRD_PARTY_DIR}/implot/implot.cpp
+    ${THIRD_PARTY_DIR}/implot/implot_items.cpp
 )
+
+include_directories(${THIRD_PARTY_DIR}/implot)
+include_directories(${THIRD_PARTY_DIR}/stb)
 
 # ── Project Structure ────────────────────────────────────────────────────────
 

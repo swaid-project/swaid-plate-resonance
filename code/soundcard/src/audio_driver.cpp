@@ -11,7 +11,7 @@ int fadeDurationMs(const std::string& t) {
 }
 
 // --- Sending the pattern to the soundcard generators
-void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std::string& symbol_id, const std::string& fade_transition) {
+void applyPattern(const std::map<std::string, json>& catalogue, const std::string& symbol_id, const std::string& fade_transition) {
 
     auto it = catalogue.find(symbol_id);
 
@@ -20,7 +20,7 @@ void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std
         return;
     }
 
-    const Json::Value& pattern = it->second;
+    const json& pattern = it->second;
 
     std::vector<float> fromAmps(NUM_GENERATORS);
     std::vector<float> toAmps(NUM_GENERATORS, 0.0f);
@@ -29,15 +29,15 @@ void applyPattern(const std::map<std::string, Json::Value>& catalogue, const std
         fromAmps[i] = generators[i].amp.load();
  
     for (const auto& t : pattern["hardware_config"]["transducers"]) {
-        int idx = t["channel"].asInt() - 1;
+        int idx = t["channel"].get<int>() - 1;
 
         if (idx < 0 || idx >= NUM_GENERATORS) 
             continue;
 
-        generators[idx].freq.store(     t["frequency_hz"].asFloat());
-        generators[idx].amp.store(      t["amplitude"].asFloat()   );
-      //generators[idx].phaseDeg.store( t["phase_deg"].asFloat()   );
-        toAmps[idx] = t["amplitude"].asFloat();
+        generators[idx].freq.store(     t["frequency_hz"].get<float>());
+        generators[idx].amp.store(      t["amplitude"].get<float>()   );
+      //generators[idx].phaseDeg.store( t["phase_deg"].get<float>()   );
+        toAmps[idx] = t["amplitude"].get<float>();
     }
 
     int duration = fadeDurationMs(fade_transition);
