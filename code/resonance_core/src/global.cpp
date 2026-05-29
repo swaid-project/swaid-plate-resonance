@@ -17,7 +17,7 @@ const char* ZMQ_ENDPOINT   = "ipc:///tmp/swaid.sock";
 // --- Soundcard instantiation
 std::vector<Generator> generators(NUM_GENERATORS); 
 std::atomic<double> measuredLatency{0.0}; 
-std::atomic<bool> headsetMode{true}; 
+std::atomic<bool> headsetMode{false}; 
 std::atomic<bool> masterMute{false};
 
 const int NUM_CHANNELS    = 8; 
