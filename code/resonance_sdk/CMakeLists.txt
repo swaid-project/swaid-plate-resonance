@@ -5,16 +5,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Project Structure ────────────────────────────────────────────────────────
-
 include_directories(include)
-link_directories(lib)
-
-set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
-include_directories(${THIRD_PARTY_DIR})
 
 file(GLOB_RECURSE SDK_SOURCES "src/*.cpp")
 
+# Build as a shared library for use in other projects (e.g., Python wrappers)
 add_library(resonance_sdk SHARED ${SDK_SOURCES})
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
 target_link_libraries(resonance_sdk PRIVATE zmq)
 
 # ── Compiler Settings ────────────────────────────────────────────────────────

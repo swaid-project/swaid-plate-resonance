@@ -19,11 +19,8 @@ add_definitions(-DGL_GLEXT_PROTOTYPES)
 
 set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
-# Eigen3 (Header only, local)
+# Eigen3 (Header only)
 include_directories(${THIRD_PARTY_DIR}/eigen)
-
-# Nlohmann JSON (Header only, local)
-include_directories(${THIRD_PARTY_DIR})
 
 # GLFW
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -35,9 +32,12 @@ set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
 add_subdirectory(${THIRD_PARTY_DIR}/glfw glfw_build)
 include_directories(${THIRD_PARTY_DIR}/glfw/include)
 
-# ImGui
+# ImGui & ImPlot
 include_directories(${THIRD_PARTY_DIR}/imgui)
 include_directories(${THIRD_PARTY_DIR}/imgui/backends)
+include_directories(${THIRD_PARTY_DIR}/implot)
+include_directories(${THIRD_PARTY_DIR}/stb)
+include_directories(${THIRD_PARTY_DIR}) # for nlohmann/json.hpp
 
 set(IMGUI_SOURCES
     ${THIRD_PARTY_DIR}/imgui/imgui.cpp
@@ -53,9 +53,6 @@ set(IMPLOT_SOURCES
     ${THIRD_PARTY_DIR}/implot/implot_items.cpp
 )
 
-include_directories(${THIRD_PARTY_DIR}/implot)
-include_directories(${THIRD_PARTY_DIR}/stb)
-
 # ── Project Structure ────────────────────────────────────────────────────────
 
 include_directories(src)
@@ -65,6 +62,8 @@ set(CORE_SOURCES
     src/core/analyzer.cpp
 )
 
+add_library(simulator_core STATIC ${CORE_SOURCES})
+
 set(GUI_SOURCES
     src/gui/application.cpp
     src/gui/panels.cpp
@@ -72,7 +71,6 @@ set(GUI_SOURCES
 
 set(ALL_SOURCES
     src/main.cpp
-    ${CORE_SOURCES}
     ${GUI_SOURCES}
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
@@ -81,6 +79,7 @@ set(ALL_SOURCES
 add_executable(chladni_sim ${ALL_SOURCES})
 
 target_link_libraries(chladni_sim
+    simulator_core
     glfw
     ${OPENGL_LIBRARIES}
     Threads::Threads

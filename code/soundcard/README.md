@@ -15,7 +15,7 @@ Real-time audio processing and signal generation for the SWAID Plate Resonance p
 ### 1. System Dependencies
 Ensure you have the required audio and windowing libraries installed:
 ```bash
-sudo apt install portaudio19-dev libglfw3-dev libzmq3-dev cppzmq-dev libjsoncpp-dev
+sudo apt install portaudio19-dev
 ```
 
 ### 2. Fetch Local Dependencies

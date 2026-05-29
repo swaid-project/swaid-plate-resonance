@@ -9,22 +9,18 @@ find_package(OpenGL REQUIRED)
 find_package(Threads REQUIRED)
 add_definitions(-DGL_GLEXT_PROTOTYPES)
 
-# ── Paths ───────────────────────────────────────────────────────────────────
+# Project dependencies
 set(SIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../simulator)
 set(SDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../resonance_sdk)
-set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
-# ── GLFW ────────────────────────────────────────────────────────────────────
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
-add_subdirectory(${THIRD_PARTY_DIR}/glfw glfw_build)
+add_subdirectory(${SIM_DIR} simulator_build)
+add_subdirectory(${SDK_DIR} resonance_sdk_build)
+
+# ── Paths ───────────────────────────────────────────────────────────────────
+set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # ── Includes ────────────────────────────────────────────────────────────────
 include_directories(include)
-link_directories(lib)
 include_directories(${SIM_DIR}/src)
 include_directories(${SDK_DIR}/include)
 include_directories(${THIRD_PARTY_DIR}/eigen)
@@ -33,6 +29,7 @@ include_directories(${THIRD_PARTY_DIR}/glfw/include)
 include_directories(${THIRD_PARTY_DIR}/imgui)
 include_directories(${THIRD_PARTY_DIR}/imgui/backends)
 include_directories(${THIRD_PARTY_DIR}/implot)
+include_directories(${THIRD_PARTY_DIR}/stb)
 
 # ── Sources ─────────────────────────────────────────────────────────────────
 set(IMGUI_SOURCES
@@ -46,28 +43,22 @@ set(IMGUI_SOURCES
     ${THIRD_PARTY_DIR}/implot/implot_items.cpp
 )
 
-set(CORE_SOURCES
-    ${SIM_DIR}/src/core/physics.cpp
-    ${SIM_DIR}/src/core/analyzer.cpp
-)
-
 set(TUNER_SOURCES
     src/main.cpp
     src/gui/tuner_app.cpp
     src/gui/tuner_panels.cpp
-    ${CORE_SOURCES}
     ${IMGUI_SOURCES}
-    ${SDK_DIR}/src/mqdriver_tx.cpp
 )
 
 # ── Target ──────────────────────────────────────────────────────────────────
 add_executable(resonance_tuner ${TUNER_SOURCES})
 
 target_link_libraries(resonance_tuner
+    simulator_core
+    resonance_sdk
     glfw
     ${OPENGL_LIBRARIES}
     Threads::Threads
-    zmq
     dl
 )
 
